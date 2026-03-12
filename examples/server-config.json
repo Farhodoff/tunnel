@@ -1,0 +1,25 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "domain": "tunnel.example.com",
+  "ssl": {
+    "enabled": true,
+    "cert": "/etc/letsencrypt/live/tunnel.example.com/fullchain.pem",
+    "key": "/etc/letsencrypt/live/tunnel.example.com/privkey.pem"
+  },
+  "auth": {
+    "enabled": true,
+    "api_keys": [
+      "tun_your_first_api_key",
+      "tun_your_second_api_key"
+    ]
+  },
+  "rate_limit": {
+    "requests_per_minute": 100,
+    "window_seconds": 60
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "/var/log/tunnel/server.log"
+  }
+}

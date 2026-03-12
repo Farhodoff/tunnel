@@ -102,6 +102,107 @@ This will run the tunnel server on port `8080`. Redis can optionally be enabled 
 
 ---
 
+## Troubleshooting
+
+### Common Issues
+
+#### 1. Port Already in Use
+**Error:** `[Errno 48] Address already in use`
+
+**Solution:**
+```bash
+# Find process using the port
+lsof -i :8080
+# or
+netstat -tulpn | grep 8080
+
+# Kill the process
+kill -9 <PID>
+
+# Or use a different port
+python -m tunnel.cli server --port 8888
+```
+
+#### 2. DNS Resolution Failed
+**Error:** `DNS_PROBE_FINISHED_NXDOMAIN`
+
+**Solution:**
+For local testing, add to `/etc/hosts`:
+```bash
+127.0.0.1 testapp.tunnel.dev
+127.0.0.1 myapp.tunnel.dev
+```
+
+Or use `curl` with Host header:
+```bash
+curl -H "Host: myapp.tunnel.dev" http://localhost:8080/
+```
+
+#### 3. SSL Certificate Errors
+**Error:** `SSL certificate verify failed`
+
+**Solution:**
+For self-signed certificates, use `-k` flag with curl:
+```bash
+curl -k https://localhost:8443/
+```
+
+Or install the certificate:
+```bash
+# macOS
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain certs/server.crt
+
+# Linux
+sudo cp certs/server.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates
+```
+
+#### 4. WebSocket Connection Failed
+**Error:** `WebSocket connection failed`
+
+**Solution:**
+- Check if server is running: `curl http://localhost:8080/health`
+- Verify firewall settings
+- Check WebSocket URL protocol (ws:// vs wss://)
+
+#### 5. Authentication Failed
+**Error:** `Invalid or missing API key`
+
+**Solution:**
+```bash
+# Generate API key
+python -c "from tunnel.auth.manager import auth_manager; print(auth_manager.generate_key('My Key'))"
+
+# Use with client
+python -m tunnel.cli client --server ws://localhost:8080 --port 3000 --token YOUR_KEY
+```
+
+### Debug Mode
+
+Enable debug logging:
+```bash
+export TUNNEL_LOG_LEVEL=DEBUG
+python -m tunnel.cli server --port 8080
+```
+
+### Getting Help
+
+- Check logs: `tail -f /var/log/tunnel/server.log`
+- Run tests: `pytest tests/ -v`
+- View examples: `examples/`
+
+---
+
+## Examples
+
+See the `examples/` directory for:
+- `client-config.json` - Client configuration
+- `server-config.json` - Server configuration
+- `basic-usage.sh` - Common commands
+- `api-examples.py` - Python API usage
+
+---
+
 ## License
 
 MIT License
