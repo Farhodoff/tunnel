@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  tunnel-server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - TUNNEL_DOMAIN=tunnel.dev
+      - TUNNEL_API_KEYS=${TUNNEL_API_KEYS:-}
+    volumes:
+      - ./certs:/app/certs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis for distributed rate limiting
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    profiles:
+      - with-redis

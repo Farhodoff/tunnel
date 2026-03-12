@@ -1,0 +1,29 @@
+# Systemd Service File for Tunnel Server
+# Copy to: /etc/systemd/system/tunnel.service
+# Enable: sudo systemctl enable tunnel
+# Start: sudo systemctl start tunnel
+
+[Unit]
+Description=Tunnel Server
+After=network.target
+
+[Service]
+Type=simple
+User=tunnel
+Group=tunnel
+WorkingDirectory=/opt/tunnel
+Environment=PATH=/opt/tunnel/venv/bin
+EnvironmentFile=/opt/tunnel/.env
+ExecStart=/opt/tunnel/venv/bin/python -m tunnel.cli server --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tunnel/logs
+
+[Install]
+WantedBy=multi-user.target
