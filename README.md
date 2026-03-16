@@ -1,20 +1,3 @@
-# Tunelio (Tunnel)
-
-Tunelio is a robust, Python-based tunneling application that exposes your local web servers to the internet. Built with FastAPI and WebSockets, it serves as a lightweight alternative to tools like ngrok or localtunnel, enabling seamless development, webhook testing, and secure remote access.
-
-## Features
-
-- **HTTP/HTTPS Tunneling**: Expose any local port to a public subdomain.
-- **WebSocket Protocol**: Fast and persistent connection between the client and server.
-- **Custom Subdomains**: Request specific subdomains for your tunnels.
-- **Dashboard & Analytics**: Built-in web dashboard to monitor active tunnels, requests, and metrics.
-- **Authentication**: Secure your tunnel server with API tokens.
-- **Docker Support**: Easy deployment using Docker and Docker Compose.
-- **SSL Support**: Built-in capabilities to handle SSL certificates.
-- **Monitoring**: Integration with Prometheus for metrics and health monitoring.
-
----
-
 ## 🛠 Technologies
 
 <p align="center">
@@ -33,6 +16,25 @@ Tunelio is a robust, Python-based tunneling application that exposes your local 
 </p>
 
 ---
+
+# Tunelio (Tunnel)
+
+Tunelio is a robust, Python-based tunneling application that exposes your local web servers to the internet. Built with FastAPI and WebSockets, it serves as a lightweight alternative to tools like ngrok or localtunnel, enabling seamless development, webhook testing, and secure remote access.
+
+## Features
+
+- **HTTP/HTTPS Tunneling**: Expose any local port to a public subdomain.
+- **WebSocket Protocol**: Fast and persistent connection between the client and server.
+- **Custom Subdomains**: Request specific subdomains for your tunnels.
+- **Dashboard & Analytics**: Built-in web dashboard to monitor active tunnels, requests, and metrics.
+- **Authentication**: Secure your tunnel server with API tokens.
+- **Docker Support**: Easy deployment using Docker and Docker Compose.
+- **SSL Support**: Built-in capabilities to handle SSL certificates.
+- **Monitoring**: Integration with Prometheus for metrics and health monitoring.
+
+---
+
+
 
 ## Installation
 
