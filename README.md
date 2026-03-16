@@ -11,6 +11,26 @@ Tunelio is a robust, Python-based tunneling application that exposes your local 
 - **Authentication**: Secure your tunnel server with API tokens.
 - **Docker Support**: Easy deployment using Docker and Docker Compose.
 - **SSL Support**: Built-in capabilities to handle SSL certificates.
+- **Monitoring**: Integration with Prometheus for metrics and health monitoring.
+
+---
+
+## 🛠 Technologies
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-005863?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Uvicorn-202324?style=for-the-badge&logo=uvicorn&logoColor=white" alt="Uvicorn" />
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white" alt="Prometheus" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white" alt="GitHub Actions" />
+  <img src="https://img.shields.io/badge/Pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="Pytest" />
+</p>
+
+<p align="center">
+  <b>WebSockets</b> • <b>aiohttp</b> • <b>MkDocs</b> • <b>Cryptography (SSL/TLS)</b>
+</p>
 
 ---
 
