@@ -3,7 +3,7 @@ Tests for authentication module
 """
 
 import pytest
-from tunnel.auth.manager import AuthManager, APIKey
+from tunnel.auth.manager import AuthManager
 
 
 class TestAuthManager:
@@ -49,3 +49,19 @@ class TestAuthManager:
         
         keys = self.auth.list_keys()
         assert len(keys) == 2
+
+    def test_expired_key_is_invalid(self, monkeypatch):
+        self.auth.enable()
+        monkeypatch.setattr("tunnel.auth.manager.time.time", lambda: 1000.0)
+        key = self.auth.generate_key("Expired Key", expires_in_days=1)
+
+        monkeypatch.setattr("tunnel.auth.manager.time.time", lambda: 1000.0 + (2 * 86400))
+        assert self.auth.validate_key(key) == False
+
+    def test_load_keys_from_env_enables_auth(self, monkeypatch):
+        monkeypatch.setenv("TUNNEL_API_KEYS", "key_one,key_two")
+        self.auth.load_keys_from_env()
+
+        assert self.auth.is_enabled == True
+        assert self.auth.validate_key("key_one") == True
+        assert self.auth.validate_key("key_two") == True
