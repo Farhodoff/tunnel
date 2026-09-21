@@ -24,6 +24,12 @@ def run_server():
     parser.add_argument("--domain", default=os.getenv("TUNNEL_DOMAIN", "tunnel.dev"), help="Base domain")
     parser.add_argument("--ssl-cert", default=os.getenv("TUNNEL_SSL_CERT"), help="SSL certificate file")
     parser.add_argument("--ssl-key", default=os.getenv("TUNNEL_SSL_KEY"), help="SSL key file")
+    parser.add_argument("--rate-limit", type=int, default=int(os.getenv("TUNNEL_RATE_LIMIT", "100")),
+                        help="HTTP requests per minute per IP")
+    parser.add_argument("--rate-window", type=int, default=int(os.getenv("TUNNEL_RATE_WINDOW", "60")),
+                        help="Rate limit window in seconds")
+    parser.add_argument("--redis-url", default=os.getenv("TUNNEL_REDIS_URL", ""),
+                        help="Redis URL for distributed rate limiting (empty=memory)")
     
     args = parser.parse_args()
     
@@ -33,9 +39,13 @@ def run_server():
     print(f"Host: {args.host}")
     print(f"Port: {args.port}")
     print(f"Domain: {args.domain}")
+    print(f"Rate: {args.rate_limit}/{args.rate_window}s backend={'redis' if args.redis_url else 'memory'}")
     
     # Apply domain + scheme to shared manager BEFORE uvicorn starts
     connection_manager.set_base_domain(args.domain)
+    from tunnel.utils.rate_limiter import rate_limiter as _rl
+    _rl.configure(max_requests=args.rate_limit, window_seconds=args.rate_window,
+                  redis_url=args.redis_url or None)
     # SSL configuration
     ssl_cert = args.ssl_cert or "certs/server.crt"
     ssl_key = args.ssl_key or "certs/server.key"

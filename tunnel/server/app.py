@@ -40,7 +40,8 @@ auth_manager.load_keys_from_env()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan"""
-    print("[Server] Starting up...")
+    rate_limiter.configure_from_env()
+    print(f"[Server] Starting up... rate_limit={rate_limiter.max_requests}/{rate_limiter.window_seconds}s backend={rate_limiter.backend}")
 
     async def _stale_sweeper():
         while True:

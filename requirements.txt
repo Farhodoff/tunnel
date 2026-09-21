@@ -11,6 +11,7 @@ websockets>=12.0
 
 # Common
 python-multipart>=0.0.6
+redis>=5.0.0  # optional: distributed rate limiting (memory fallback if missing/down)
 
 # SSL/TLS
 cryptography>=41.0.0

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   tunnel-server:
     build: .
@@ -8,6 +6,9 @@ services:
     environment:
       - TUNNEL_DOMAIN=tunnel.dev
       - TUNNEL_API_KEYS=${TUNNEL_API_KEYS:-}
+      - TUNNEL_RATE_LIMIT=${TUNNEL_RATE_LIMIT:-100}
+      - TUNNEL_RATE_WINDOW=${TUNNEL_RATE_WINDOW:-60}
+      - TUNNEL_REDIS_URL=${TUNNEL_REDIS_URL:-}
     volumes:
       - ./certs:/app/certs
     restart: unless-stopped
@@ -18,6 +19,7 @@ services:
       retries: 3
 
   # Optional: Redis for distributed rate limiting
+  # Run with: TUNNEL_REDIS_URL=redis://redis:6379/0 docker compose --profile with-redis up
   redis:
     image: redis:7-alpine
     ports:
