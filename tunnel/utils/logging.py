@@ -29,9 +29,17 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(name: str, level: int = logging.INFO, 
+def _level_from_env(default: int = logging.INFO) -> int:
+    """Read TUNNEL_LOG_LEVEL (DEBUG/INFO/WARNING/ERROR), fallback to default"""
+    import os
+    return getattr(logging, os.getenv("TUNNEL_LOG_LEVEL", "").upper(), default)
+
+
+def setup_logger(name: str, level: Optional[int] = None,
                  colored: bool = True) -> logging.Logger:
-    """Setup logger with colored output"""
+    """Setup logger with colored output (level from TUNNEL_LOG_LEVEL env)"""
+    if level is None:
+        level = _level_from_env()
     logger = logging.getLogger(name)
     logger.setLevel(level)
     

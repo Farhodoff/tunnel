@@ -7,6 +7,10 @@ import time
 from typing import Dict, Optional
 from dataclasses import dataclass, field
 
+from tunnel.utils.logging import setup_logger
+
+logger = setup_logger("tunnel.ratelimiter")
+
 
 @dataclass
 class RateLimitEntry:
@@ -84,7 +88,7 @@ class RateLimiter:
             self._redis = client
             return client
         except Exception as e:
-            print(f"[RateLimiter] Redis unavailable ({e}), using memory fallback")
+            logger.warning(f"Redis unavailable ({e}), using memory fallback")
             self._redis_failed = True
             return None
 
@@ -119,7 +123,7 @@ class RateLimiter:
                 r.expire(k, self.window_seconds * 2)
             return count <= self.max_requests
         except Exception as e:
-            print(f"[RateLimiter] Redis error ({e}), fallback to memory")
+            logger.warning(f"Redis error ({e}), fallback to memory")
             self._redis_failed = True
             return self._memory_allowed(key)
     

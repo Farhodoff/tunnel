@@ -8,6 +8,10 @@ import uuid
 from typing import Dict, Optional
 from dataclasses import dataclass, field
 
+from tunnel.utils.logging import setup_logger
+
+logger = setup_logger("tunnel.tcp")
+
 from tunnel.core.protocol import (
     Message, MessageType, create_tcp_connect, create_tcp_data, create_tcp_close
 )
@@ -93,7 +97,7 @@ class TCPHandler:
                     await tunnel.websocket.send_text(data_msg.to_json())
                     
             except Exception as e:
-                print(f"[TCP] Connection error: {e}")
+                logger.error(f"Connection error: {e}")
             finally:
                 await self.close_connection(connection_id, "Client disconnected")
         
@@ -105,7 +109,7 @@ class TCPHandler:
         self._servers[tunnel_id] = server
         
         actual = self.get_listener_port(tunnel_id)
-        print(f"[TCP] Started listener on port {actual} for tunnel {tunnel_id}")
+        logger.info(f"Started listener on port {actual} for tunnel {tunnel_id}")
         return server
     
     async def handle_tcp_data(self, tunnel_id: str, payload: Dict):
@@ -125,7 +129,7 @@ class TCPHandler:
                 conn.writer.write(decoded)
                 await conn.writer.drain()
             except Exception as e:
-                print(f"[TCP] Write error: {e}")
+                logger.error(f"Write error: {e}")
                 await self.close_connection(connection_id, str(e))
     
     async def handle_tcp_close(self, tunnel_id: str, payload: Dict):
@@ -143,7 +147,7 @@ class TCPHandler:
                 await conn.writer.wait_closed()
             except:
                 pass
-            print(f"[TCP] Closed connection {connection_id}: {reason or 'Unknown'}")
+            logger.info(f"Closed connection {connection_id}: {reason or 'Unknown'}")
     
     async def stop_tcp_listener(self, tunnel_id: str):
         """Stop TCP listener for tunnel"""
@@ -151,7 +155,7 @@ class TCPHandler:
         if server:
             server.close()
             await server.wait_closed()
-            print(f"[TCP] Stopped listener for tunnel {tunnel_id}")
+            logger.info(f"Stopped listener for tunnel {tunnel_id}")
         
         # Close all connections for this tunnel
         connections_to_close = [

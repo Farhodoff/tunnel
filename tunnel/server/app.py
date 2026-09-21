@@ -22,6 +22,8 @@ from tunnel.auth.manager import auth_manager
 from tunnel.utils.rate_limiter import rate_limiter
 from tunnel.utils.request_logger import request_logger
 from tunnel.utils.metrics import metrics
+from tunnel.utils.middleware import request_modifier, response_modifier
+from tunnel.utils.logging import server_logger
 
 
 # Global connection manager
@@ -43,7 +45,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan"""
     rate_limiter.configure_from_env()
     auth_manager.configure_from_env()
-    print(f"[Server] Starting up... rate_limit={rate_limiter.max_requests}/{rate_limiter.window_seconds}s backend={rate_limiter.backend} auth={'enabled' if auth_manager.is_enabled else 'disabled'}")
+    server_logger.info(
+        f"Starting up... rate_limit={rate_limiter.max_requests}/{rate_limiter.window_seconds}s "
+        f"backend={rate_limiter.backend} auth={'enabled' if auth_manager.is_enabled else 'disabled'}")
 
     async def _stale_sweeper():
         while True:
@@ -54,14 +58,14 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"[Server] sweeper error: {e}")
+                server_logger.error(f"sweeper error: {e}")
 
     sweeper = asyncio.create_task(_stale_sweeper())
     try:
         yield
     finally:
         sweeper.cancel()
-        print("[Server] Shutting down...")
+        server_logger.info("Shutting down...")
 
 
 app = FastAPI(
@@ -217,7 +221,7 @@ async def websocket_endpoint(websocket: WebSocket):
         )
         await websocket.send_text(ack.to_json())
         
-        print(f"[Server] Tunnel created: {tunnel.subdomain} -> localhost:{local_port}")
+        server_logger.info(f"Tunnel created: {tunnel.subdomain} -> localhost:{local_port}")
         
         # Main message loop
         while True:
@@ -243,18 +247,18 @@ async def websocket_endpoint(websocket: WebSocket):
             except WebSocketDisconnect:
                 break
             except Exception as e:
-                print(f"[Server] Message error: {e}")
+                server_logger.error(f"Message error: {e}")
                 break
                 
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"[Server] WebSocket error: {e}")
+        server_logger.error(f"WebSocket error: {e}")
     finally:
         if tunnel:
             await tcp_handler.stop_tcp_listener(tunnel.tunnel_id)
             await manager.remove_tunnel(tunnel.tunnel_id)
-            print(f"[Server] Tunnel closed: {tunnel.subdomain}")
+            server_logger.info(f"Tunnel closed: {tunnel.subdomain}")
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
@@ -295,9 +299,9 @@ async def proxy_request(request: Request, path: str):
             content={"error": f"Tunnel not found: {subdomain}"}
         )
     
-    # Build request
+    # Build request (middleware may inject headers / rewrite path)
     method = request.method
-    headers = dict(request.headers)
+    headers = request_modifier.modify_headers(dict(request.headers))
 
     # Read raw body (binary-safe -> base64 for WS transport)
     import base64 as _b64
@@ -319,6 +323,7 @@ async def proxy_request(request: Request, path: str):
     full_path = f"/{path}"
     if raw_query:
         full_path += f"?{raw_query}"
+    full_path = request_modifier.rewrite_path(full_path, method)
 
     # Forward request
     start_time = time.time()
@@ -367,6 +372,10 @@ async def proxy_request(request: Request, path: str):
     # Ensure content-type always present (case-insensitive check)
     if not any(k.lower() == "content-type" for k in resp_headers):
         resp_headers["content-type"] = "application/octet-stream"
+
+    # Apply response middleware: CORS + security headers
+    resp_headers = response_modifier.modify_headers(
+        resp_headers, request_origin=request.headers.get("origin"))
 
     return Response(
         content=content,

@@ -9,6 +9,10 @@ import uuid
 from typing import Dict, Optional, Any, Tuple
 from dataclasses import dataclass, field
 
+from tunnel.utils.logging import setup_logger
+
+logger = setup_logger("tunnel.connection")
+
 
 RESERVED_SUBDOMAINS = {
     "www", "api", "dashboard", "metrics", "health",
@@ -231,4 +235,4 @@ class ConnectionManager:
         
         for tunnel_id in to_remove:
             await self.remove_tunnel(tunnel_id)
-            print(f"[ConnectionManager] Removed stale tunnel: {tunnel_id}")
+            logger.info(f"Removed stale tunnel: {tunnel_id}")

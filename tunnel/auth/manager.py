@@ -8,6 +8,10 @@ import time
 from typing import Dict, Optional, Set
 from dataclasses import dataclass, field
 
+from tunnel.utils.logging import setup_logger
+
+logger = setup_logger("tunnel.auth")
+
 
 @dataclass
 class APIKey:
@@ -41,12 +45,12 @@ class AuthManager:
     def enable(self):
         """Enable authentication"""
         self._enabled = True
-        print("[Auth] Authentication enabled")
+        logger.info("Authentication enabled")
     
     def disable(self):
         """Disable authentication"""
         self._enabled = False
-        print("[Auth] Authentication disabled")
+        logger.info("Authentication disabled")
     
     @property
     def is_enabled(self) -> bool:
@@ -83,7 +87,7 @@ class AuthManager:
         # Creating a key turns auth on (fail-closed from then on)
         if not self._enabled:
             self.enable()
-        print(f"[Auth] Generated key: {name} (ID: {key_id})")
+        logger.info(f"Generated key: {name} (ID: {key_id})")
         self._persist()
         return raw_key
     
@@ -99,7 +103,7 @@ class AuthManager:
         if api_key.key_hash in self._key_hashes:
             del self._key_hashes[api_key.key_hash]
         
-        print(f"[Auth] Revoked key: {key_id}")
+        logger.info(f"Revoked key: {key_id}")
         self._persist()
         return True
     
@@ -168,7 +172,7 @@ class AuthManager:
         
         if self._keys:
             self.enable()
-            print(f"[Auth] Loaded {len(self._keys)} keys from environment")
+            logger.info(f"Loaded {len(self._keys)} keys from environment")
     
     def configure_file(self, path: Optional[str]):
         """Set JSON persistence file (None = disable)"""
@@ -185,7 +189,7 @@ class AuthManager:
             except FileNotFoundError:
                 pass  # first run, file created on first generate
             except Exception as e:
-                print(f"[Auth] Failed to load keys file ({e})")
+                logger.warning(f"Failed to load keys file ({e})")
         self.load_keys_from_env(keys_var)
         return self
     
@@ -245,7 +249,7 @@ class AuthManager:
             loaded += 1
         if loaded:
             self.enable()
-            print(f"[Auth] Loaded {loaded} keys from file")
+            logger.info(f"Loaded {loaded} keys from file")
         return loaded
     
     def _persist(self):
@@ -255,7 +259,7 @@ class AuthManager:
         try:
             self.save_to_file()
         except Exception as e:
-            print(f"[Auth] Failed to save keys file ({e})")
+            logger.warning(f"Failed to save keys file ({e})")
 
 
 # Global auth manager instance
