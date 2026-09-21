@@ -264,7 +264,10 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
 async def proxy_request(request: Request, path: str):
     """Proxy HTTP requests to tunnels"""
-    
+    import uuid as _uuid
+    # Incoming trace id (or fresh): echoed back as X-Request-ID on every outcome
+    trace_id = request.headers.get("x-request-id") or _uuid.uuid4().hex[:12]
+
     # Rate limiting by IP
     client_ip = request.client.host if request.client else "unknown"
     if not rate_limiter.is_allowed(client_ip):
@@ -273,7 +276,8 @@ async def proxy_request(request: Request, path: str):
             content={
                 "error": "Rate limit exceeded",
                 "retry_after": int(rate_limiter.get_reset_time(client_ip) - __import__('time').time())
-            }
+            },
+            headers={"x-request-id": trace_id},
         )
     
     # Extract subdomain from host
@@ -288,7 +292,8 @@ async def proxy_request(request: Request, path: str):
     if not subdomain:
         return JSONResponse(
             status_code=400,
-            content={"error": "Invalid host header"}
+            content={"error": "Invalid host header"},
+            headers={"x-request-id": trace_id},
         )
     
     # Get tunnel
@@ -296,7 +301,8 @@ async def proxy_request(request: Request, path: str):
     if not tunnel:
         return JSONResponse(
             status_code=404,
-            content={"error": f"Tunnel not found: {subdomain}"}
+            content={"error": f"Tunnel not found: {subdomain}"},
+            headers={"x-request-id": trace_id},
         )
     
     # Build request (middleware may inject headers / rewrite path)
@@ -343,7 +349,8 @@ async def proxy_request(request: Request, path: str):
         metrics.record_request(method, 502, duration_ms)
         return JSONResponse(
             status_code=502,
-            content={"error": "Failed to forward request"}
+            content={"error": "Failed to forward request"},
+            headers={"x-request-id": trace_id},
         )
     
     status_code = response_data.get("status_code", 502)
@@ -376,6 +383,10 @@ async def proxy_request(request: Request, path: str):
     # Apply response middleware: CORS + security headers
     resp_headers = response_modifier.modify_headers(
         resp_headers, request_origin=request.headers.get("origin"))
+
+    # Trace id: internal tunnel request_id wins (matches client echo),
+    # otherwise the incoming/generated trace id
+    resp_headers["x-request-id"] = response_data.get("request_id", trace_id)
 
     return Response(
         content=content,
