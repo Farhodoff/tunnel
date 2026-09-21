@@ -1,8 +1,14 @@
 {
   "server": "wss://tunnel.example.com",
   "local_port": 3000,
+  "local_host": "127.0.0.1",
+  "local_https": false,
+  "insecure": false,
   "subdomain": "myapp",
   "auth_token": "your_api_key_here",
+  "tcp": false,
+  "tcp_port": 0,
+  "tcp_target_host": "127.0.0.1",
   "reconnect": {
     "enabled": true,
     "max_delay": 30,

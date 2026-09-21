@@ -24,7 +24,9 @@ class TunnelClient:
                  subdomain: Optional[str] = None, auth_token: Optional[str] = None,
                  tcp_enabled: bool = False, tcp_public_port: int = 0,
                  tcp_target_host: str = "127.0.0.1",
-                 tcp_target_port: Optional[int] = None):
+                 tcp_target_port: Optional[int] = None,
+                 local_host: str = "127.0.0.1", local_https: bool = False,
+                 insecure: bool = False, max_retries: int = 0):
         self.server_url = server_url
         self.local_port = local_port
         self.subdomain = subdomain
@@ -33,6 +35,10 @@ class TunnelClient:
         self.tcp_public_port = tcp_public_port
         self.tcp_target_host = tcp_target_host
         self.tcp_target_port = tcp_target_port if tcp_target_port is not None else local_port
+        self.local_host = local_host or "127.0.0.1"
+        self.local_https = bool(local_https)
+        self.insecure = bool(insecure)
+        self.max_retries = max(0, int(max_retries or 0))  # 0 = infinite
         
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.session: Optional[aiohttp.ClientSession] = None
@@ -58,55 +64,86 @@ class TunnelClient:
         try:
             self.ws = await websockets.connect(ws_url)
             self.session = aiohttp.ClientSession()
-            
-            # Send connect message
-            connect_msg = create_connect_message(
-                subdomain=self.subdomain,
-                local_port=self.local_port,
-                auth_token=self.auth_token,
-                tcp_enabled=self.tcp_enabled,
-                tcp_public_port=self.tcp_public_port,
-                tcp_target_host=self.tcp_target_host,
-                tcp_target_port=self.tcp_target_port,
-            )
-            await self.ws.send(connect_msg.to_json())
-            
-            # Wait for acknowledgment
-            response_data = await self.ws.recv()
-            response = Message.from_json(response_data)
-            
-            if response.msg_type == MessageType.ERROR.value:
-                error_msg = response.payload.get("message", "Unknown error")
-                print(f"[Client] Connection failed: {error_msg}")
+            try:
+                return await self._handshake()
+            except Exception as e:
+                print(f"[Client] Connection error: {e}")
+                await self._cleanup_failed_connect()
                 return False
-            
-            if response.msg_type == MessageType.CONNECT_ACK.value:
-                self.tunnel_id = response.payload.get("tunnel_id")
-                self.public_url = response.payload.get("public_url")
-                self.tcp_port = response.payload.get("tcp_port")
-                self.tcp_public_url = response.payload.get("tcp_public_url")
-                assigned_subdomain = response.payload.get("subdomain")
-                self.connected = True
-                self._reconnect_delay = 1.0
-                
-                # Initialize TCP handler
-                self._tcp_handler = TCPClientHandler(self.ws.send)
-                
-                print(f"[Client] ✅ Connected!")
-                print(f"[Client] Tunnel ID: {self.tunnel_id}")
-                print(f"[Client] Public URL: {self.public_url}")
-                print(f"[Client] Local port: {self.local_port}")
-                if self.tcp_public_url:
-                    print(f"[Client] TCP URL: {self.tcp_public_url} -> {self.tcp_target_host}:{self.tcp_target_port}")
-                print(f"\n[Client] Your server is accessible at: {self.public_url}\n")
-                
-                # Start ping task
-                self._ping_task = asyncio.create_task(self._ping_loop())
-                return True
-                
         except Exception as e:
             print(f"[Client] Connection error: {e}")
+            await self._cleanup_failed_connect()
             return False
+
+    async def _cleanup_failed_connect(self):
+        """Close half-opened ws/session after a failed handshake (no leak)"""
+        self.connected = False
+        if self.ws is not None:
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+        if self.session is not None:
+            try:
+                await self.session.close()
+            except Exception:
+                pass
+            self.session = None
+
+    async def _handshake(self) -> bool:
+        """Send CONNECT and wait for ACK. Caller owns cleanup on failure."""
+        assert self.ws is not None and self.session is not None
+        # Send connect message
+        connect_msg = create_connect_message(
+            subdomain=self.subdomain,
+            local_port=self.local_port,
+            auth_token=self.auth_token,
+            tcp_enabled=self.tcp_enabled,
+            tcp_public_port=self.tcp_public_port,
+            tcp_target_host=self.tcp_target_host,
+            tcp_target_port=self.tcp_target_port,
+        )
+        await self.ws.send(connect_msg.to_json())
+        
+        # Wait for acknowledgment
+        response_data = await self.ws.recv()
+        response = Message.from_json(response_data)
+        
+        if response.msg_type == MessageType.ERROR.value:
+            error_msg = response.payload.get("message", "Unknown error")
+            print(f"[Client] Connection failed: {error_msg}")
+            await self._cleanup_failed_connect()
+            return False
+        
+        if response.msg_type == MessageType.CONNECT_ACK.value:
+            self.tunnel_id = response.payload.get("tunnel_id")
+            self.public_url = response.payload.get("public_url")
+            self.tcp_port = response.payload.get("tcp_port")
+            self.tcp_public_url = response.payload.get("tcp_public_url")
+            assigned_subdomain = response.payload.get("subdomain")
+            self.connected = True
+            self._reconnect_delay = 1.0
+            
+            # Initialize TCP handler
+            self._tcp_handler = TCPClientHandler(self.ws.send)
+            
+            print(f"[Client] ✅ Connected!")
+            print(f"[Client] Tunnel ID: {self.tunnel_id}")
+            print(f"[Client] Public URL: {self.public_url}")
+            print(f"[Client] Local port: {self.local_port}")
+            if self.tcp_public_url:
+                print(f"[Client] TCP URL: {self.tcp_public_url} -> {self.tcp_target_host}:{self.tcp_target_port}")
+            print(f"\n[Client] Your server is accessible at: {self.public_url}\n")
+            
+            # Start ping task
+            self._ping_task = asyncio.create_task(self._ping_loop())
+            return True
+
+        # Unexpected first message
+        print(f"[Client] Connection failed: unexpected {response.msg_type}")
+        await self._cleanup_failed_connect()
+        return False
     
     async def disconnect(self):
         """Disconnect from server"""
@@ -114,6 +151,7 @@ class TunnelClient:
         
         if self._tcp_handler:
             await self._tcp_handler.close_all()
+            self._tcp_handler = None
         
         if self._ping_task:
             self._ping_task.cancel()
@@ -121,15 +159,21 @@ class TunnelClient:
                 await self._ping_task
             except asyncio.CancelledError:
                 pass
+            self._ping_task = None
         
         if self.ws:
             try:
                 await self.ws.close()
-            except:
+            except Exception:
                 pass
+            self.ws = None
         
         if self.session:
-            await self.session.close()
+            try:
+                await self.session.close()
+            except Exception:
+                pass
+            self.session = None
         
         print("[Client] Disconnected")
     
@@ -157,7 +201,9 @@ class TunnelClient:
         body_b64 = request_data.get("body_b64")
         request_id = request_data.get("request_id", "")
         
-        local_url = f"http://localhost:{self.local_port}{path}"
+        scheme = "https" if self.local_https else "http"
+        local_url = f"{scheme}://{self.local_host}:{self.local_port}{path}"
+        ssl_arg = False if (self.local_https and self.insecure) else None
         
         # Filter hop-by-hop headers; let aiohttp recalc content-length
         _hop = {"host", "content-length", "connection", "transfer-encoding",
@@ -178,13 +224,11 @@ class TunnelClient:
         
         try:
             timeout = aiohttp.ClientTimeout(total=30)
-            async with self.session.request(
-                method=method,
-                url=local_url,
-                headers=headers,
-                data=raw_body,
-                timeout=timeout
-            ) as response:
+            kwargs = dict(method=method, url=local_url, headers=headers,
+                          data=raw_body, timeout=timeout)
+            if ssl_arg is not None:
+                kwargs["ssl"] = ssl_arg
+            async with self.session.request(**kwargs) as response:
                 
                 raw_resp = await response.read()
                 import base64 as _b64resp
@@ -217,18 +261,25 @@ class TunnelClient:
                 "body": f"Error: {str(e)}"
             }
     
-    async def run(self):
-        """Main client loop"""
+    async def run(self) -> int:
+        """Main client loop. Returns 0 on clean stop, 1 when retries exhausted."""
+        attempts = 0
         while True:
             if not await self.connect():
+                attempts += 1
+                if self.max_retries and attempts >= self.max_retries:
+                    print(f"[Client] Giving up after {attempts} attempt(s)")
+                    return 1
                 # Retry with backoff
-                print(f"[Client] Retrying in {self._reconnect_delay}s...")
+                print(f"[Client] Retrying in {self._reconnect_delay}s... (attempt {attempts})")
                 await asyncio.sleep(self._reconnect_delay)
                 self._reconnect_delay = min(
                     self._reconnect_delay * 2,
                     self._max_reconnect_delay
                 )
                 continue
+
+            attempts = 0  # connected OK, reset failure counter
             
             try:
                 while self.connected:

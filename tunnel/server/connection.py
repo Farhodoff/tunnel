@@ -85,8 +85,16 @@ class ConnectionManager:
         self.use_https = use_https
         self.tunnels: Dict[str, Tunnel] = {}  # tunnel_id -> Tunnel
         self.subdomain_map: Dict[str, str] = {}  # subdomain -> tunnel_id
-        self._lock = asyncio.Lock()
+        # Lazy lock: asyncio.Lock() binds to the running loop on py3.8/3.9,
+        # so creating it in __init__ breaks when no loop runs (tests, import).
+        self._lock: Optional[asyncio.Lock] = None
         self._request_counter = 0
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Return lock, creating it inside the running loop on first use"""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
     
     def _generate_id(self) -> str:
         """Generate unique tunnel ID"""
@@ -123,7 +131,7 @@ class ConnectionManager:
                            tcp_target_host: str = "127.0.0.1",
                            tcp_target_port: Optional[int] = None) -> Optional[Tunnel]:
         """Create new tunnel"""
-        async with self._lock:
+        async with self._get_lock():
             # Generate or validate subdomain
             if requested_subdomain:
                 ok, _ = validate_subdomain(requested_subdomain)
@@ -158,7 +166,7 @@ class ConnectionManager:
     
     async def remove_tunnel(self, tunnel_id: str):
         """Remove tunnel"""
-        async with self._lock:
+        async with self._get_lock():
             tunnel = self.tunnels.pop(tunnel_id, None)
             if tunnel:
                 if tunnel.subdomain in self.subdomain_map:
@@ -167,13 +175,13 @@ class ConnectionManager:
     
     async def get_by_subdomain(self, subdomain: str) -> Optional[Tunnel]:
         """Get tunnel by subdomain"""
-        async with self._lock:
+        async with self._get_lock():
             tunnel_id = self.subdomain_map.get(subdomain)
             return self.tunnels.get(tunnel_id) if tunnel_id else None
     
     async def get_by_id(self, tunnel_id: str) -> Optional[Tunnel]:
         """Get tunnel by ID"""
-        async with self._lock:
+        async with self._get_lock():
             return self.tunnels.get(tunnel_id)
     
     async def forward_request(self, subdomain: str, method: str, path: str,
@@ -216,7 +224,7 @@ class ConnectionManager:
     
     async def get_stats(self) -> Dict[str, Any]:
         """Get connection statistics"""
-        async with self._lock:
+        async with self._get_lock():
             return {
                 "total_tunnels": len(self.tunnels),
                 "active_tunnels": sum(1 for t in self.tunnels.values() if t.is_active),
@@ -228,7 +236,7 @@ class ConnectionManager:
         current_time = time.time()
         to_remove = []
         
-        async with self._lock:
+        async with self._get_lock():
             for tunnel_id, tunnel in self.tunnels.items():
                 if current_time - tunnel.last_ping > max_idle:
                     to_remove.append(tunnel_id)

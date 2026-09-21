@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -75,48 +76,104 @@ def run_server():
         uvicorn.run(server_app, host=args.host, port=args.port)
 
 
+def _load_client_config(path: Optional[str]) -> dict:
+    """Load client JSON config (see examples/client-config.json). Missing file -> {}."""
+    import json
+    import os
+    if not path:
+        return {}
+    try:
+        with open(os.path.expanduser(path)) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        print(f"[Client] Config not found: {path}")
+        return {}
+    except Exception as e:
+        print(f"[Client] Bad config {path}: {e}")
+        return {}
+
+
 def run_client():
     """Run tunnel client"""
+    import os
     parser = argparse.ArgumentParser(description="Tunnel Client")
-    parser.add_argument("--server", "-s", default="ws://localhost:8080",
-                       help="Server URL (default: ws://localhost:8080)")
-    parser.add_argument("--port", "-p", type=int, default=3000,
+    parser.add_argument("--server", "-s", default=None,
+                       help="Server URL (env TUNNEL_SERVER, default: ws://localhost:8080)")
+    parser.add_argument("--port", "-p", type=int, default=None,
                        help="Local server port (default: 3000)")
-    parser.add_argument("--subdomain", help="Custom subdomain")
-    parser.add_argument("--token", help="Auth token")
+    parser.add_argument("--subdomain", default=None, help="Custom subdomain")
+    parser.add_argument("--token", default=None, help="Auth token (env TUNNEL_TOKEN)")
     parser.add_argument("--tcp", action="store_true", help="Enable TCP forwarding")
-    parser.add_argument("--tcp-port", type=int, default=0, help="Public TCP port on server (0=auto)")
-    parser.add_argument("--tcp-target-host", default="127.0.0.1", help="Local TCP host to forward to")
-    parser.add_argument("--tcp-target-port", type=int, help="Local TCP port to forward to (default: --port)")
+    parser.add_argument("--tcp-port", type=int, default=None, help="Public TCP port on server (0=auto)")
+    parser.add_argument("--tcp-target-host", default=None, help="Local TCP host to forward to")
+    parser.add_argument("--tcp-target-port", type=int, default=None, help="Local TCP port to forward to (default: --port)")
+    parser.add_argument("--local-host", default=None, help="Local HTTP host (default: 127.0.0.1)")
+    parser.add_argument("--local-https", action="store_true", help="Use https:// for local server")
+    parser.add_argument("--insecure", action="store_true", help="Skip TLS verify for local https")
+    parser.add_argument("--max-retries", type=int, default=None, help="Max connect attempts, 0=infinite (default)")
+    parser.add_argument("--config", "-c", default=os.getenv("TUNNEL_CONFIG", ""),
+                        help="JSON config file (see examples/client-config.json)")
     
     args = parser.parse_args()
-    
+    cfg = _load_client_config(args.config)
+    rec = cfg.get("reconnect", {}) if isinstance(cfg.get("reconnect"), dict) else {}
+
+    def pick(name, *fallbacks):
+        v = getattr(args, name, None)
+        if v not in (None, "", False) or name in ("tcp", "local_https", "insecure"):
+            # flags: CLI True wins, else config
+            if isinstance(v, bool):
+                return v or bool(cfg.get(name, False))
+            if v is not None:
+                return v
+        for fb in fallbacks:
+            if fb not in (None, ""):
+                return fb
+        return None
+
+    server = pick("server", cfg.get("server"), os.getenv("TUNNEL_SERVER"), "ws://localhost:8080")
+    port = pick("port", cfg.get("port", cfg.get("local_port")), 3000)
+    subdomain = pick("subdomain", cfg.get("subdomain"))
+    token = pick("token", cfg.get("token", cfg.get("auth_token")), os.getenv("TUNNEL_TOKEN"))
+    tcp_port = pick("tcp_port", cfg.get("tcp_port"), 0)
+    tcp_target_host = pick("tcp_target_host", cfg.get("tcp_target_host"), "127.0.0.1")
+    tcp_target_port = pick("tcp_target_port", cfg.get("tcp_target_port"), port)
+    local_host = pick("local_host", cfg.get("local_host"), "127.0.0.1")
+    max_retries = pick("max_retries", rec.get("max_attempts"), 0)
+
     print("=" * 50)
     print("Tunnel Client")
     print("=" * 50)
-    print(f"Server: {args.server}")
-    print(f"Local port: {args.port}")
-    if args.subdomain:
-        print(f"Requested subdomain: {args.subdomain}")
-    if args.tcp:
-        print(f"TCP: enabled (public={args.tcp_port or 'auto'} -> {args.tcp_target_host}:{args.tcp_target_port or args.port})")
+    print(f"Server: {server}")
+    print(f"Local: {'https' if (args.local_https or cfg.get('local_https')) else 'http'}://{local_host}:{port}")
+    if subdomain:
+        print(f"Requested subdomain: {subdomain}")
+    if args.tcp or cfg.get("tcp"):
+        print(f"TCP: enabled (public={tcp_port or 'auto'} -> {tcp_target_host}:{tcp_target_port})")
     print("=" * 50)
     
     client = TunnelClient(
-        server_url=args.server,
-        local_port=args.port,
-        subdomain=args.subdomain,
-        auth_token=args.token,
-        tcp_enabled=args.tcp,
-        tcp_public_port=args.tcp_port,
-        tcp_target_host=args.tcp_target_host,
-        tcp_target_port=args.tcp_target_port if args.tcp_target_port is not None else args.port,
+        server_url=server,
+        local_port=port,
+        subdomain=subdomain,
+        auth_token=token,
+        tcp_enabled=bool(args.tcp or cfg.get("tcp")),
+        tcp_public_port=tcp_port or 0,
+        tcp_target_host=tcp_target_host,
+        tcp_target_port=tcp_target_port,
+        local_host=local_host,
+        local_https=bool(args.local_https or cfg.get("local_https")),
+        insecure=bool(args.insecure or cfg.get("insecure")),
+        max_retries=max_retries or 0,
     )
     
     try:
-        asyncio.run(client.run())
+        code = asyncio.run(client.run())
     except KeyboardInterrupt:
         print("\n[Client] Exiting...")
+        code = 0
+    sys.exit(code if isinstance(code, int) else 0)
 
 
 def main():
