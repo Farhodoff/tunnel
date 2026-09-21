@@ -30,12 +30,13 @@ class APIKey:
 
 
 class AuthManager:
-    """Manages API authentication"""
+    """Manages API authentication (env + JSON file persistence)"""
     
-    def __init__(self):
+    def __init__(self, file_path: Optional[str] = None):
         self._keys: Dict[str, APIKey] = {}  # key_id -> APIKey
         self._key_hashes: Dict[str, str] = {}  # key_hash -> key_id
         self._enabled: bool = False  # Auth disabled by default
+        self._file: Optional[str] = file_path
     
     def enable(self):
         """Enable authentication"""
@@ -79,7 +80,11 @@ class AuthManager:
         self._keys[key_id] = api_key
         self._key_hashes[api_key.key_hash] = key_id
         
+        # Creating a key turns auth on (fail-closed from then on)
+        if not self._enabled:
+            self.enable()
         print(f"[Auth] Generated key: {name} (ID: {key_id})")
+        self._persist()
         return raw_key
     
     def revoke_key(self, key_id: str) -> bool:
@@ -95,6 +100,7 @@ class AuthManager:
             del self._key_hashes[api_key.key_hash]
         
         print(f"[Auth] Revoked key: {key_id}")
+        self._persist()
         return True
     
     def validate_key(self, key: Optional[str]) -> bool:
@@ -163,6 +169,93 @@ class AuthManager:
         if self._keys:
             self.enable()
             print(f"[Auth] Loaded {len(self._keys)} keys from environment")
+    
+    def configure_file(self, path: Optional[str]):
+        """Set JSON persistence file (None = disable)"""
+        self._file = path or None
+    
+    def configure_from_env(self, keys_var: str = "TUNNEL_API_KEYS",
+                           file_var: str = "TUNNEL_API_KEYS_FILE"):
+        """Load file first, then env (env keys win, are not persisted)"""
+        import os
+        self.configure_file(os.getenv(file_var, self._file or ""))
+        if self._file:
+            try:
+                self.load_from_file(self._file)
+            except FileNotFoundError:
+                pass  # first run, file created on first generate
+            except Exception as e:
+                print(f"[Auth] Failed to load keys file ({e})")
+        self.load_keys_from_env(keys_var)
+        return self
+    
+    def save_to_file(self, path: Optional[str] = None) -> int:
+        """Persist hashed key records to JSON. Returns count saved."""
+        import json
+        target = path or self._file
+        if not target:
+            return 0
+        data = [
+            {
+                "key_id": k.key_id,
+                "key_hash": k.key_hash,
+                "name": k.name,
+                "created_at": k.created_at,
+                "expires_at": k.expires_at,
+                "is_active": k.is_active,
+                "rate_limit": k.rate_limit,
+            }
+            for k in self._keys.values()
+            if not k.key_id.startswith("env_")  # env keys are config, not state
+        ]
+        with open(target, "w") as f:
+            json.dump(data, f, indent=2)
+        return len(data)
+    
+    def load_from_file(self, path: Optional[str] = None) -> int:
+        """Load hashed key records from JSON. Returns count loaded."""
+        import json
+        import os
+        target = path or self._file
+        if not target:
+            return 0
+        if not os.path.exists(target):
+            raise FileNotFoundError(target)
+        with open(target) as f:
+            data = json.load(f)
+        loaded = 0
+        for item in data:
+            key_id = item.get("key_id", "")
+            if not key_id or key_id in self._keys:
+                continue
+            api_key = APIKey(
+                key_id=key_id,
+                key_hash=item.get("key_hash", ""),
+                name=item.get("name", key_id),
+                created_at=item.get("created_at", time.time()),
+                expires_at=item.get("expires_at"),
+                is_active=item.get("is_active", True),
+                rate_limit=item.get("rate_limit", 100),
+            )
+            if not api_key.key_hash:
+                continue
+            self._keys[key_id] = api_key
+            if api_key.is_valid():
+                self._key_hashes[api_key.key_hash] = key_id
+            loaded += 1
+        if loaded:
+            self.enable()
+            print(f"[Auth] Loaded {loaded} keys from file")
+        return loaded
+    
+    def _persist(self):
+        """Best-effort auto-save after mutations"""
+        if not self._file:
+            return
+        try:
+            self.save_to_file()
+        except Exception as e:
+            print(f"[Auth] Failed to save keys file ({e})")
 
 
 # Global auth manager instance

@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+api_keys.json
 venv/
 env/
 .venv/

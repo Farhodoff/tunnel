@@ -16,6 +16,7 @@ from tunnel.core.protocol import (
 from tunnel.server.connection import ConnectionManager
 from tunnel.server.dashboard import router as dashboard_router
 from tunnel.server.webhook_tester import router as webhook_router
+from tunnel.auth.routes import router as auth_router
 from tunnel.server.tcp_handler import TCPHandler
 from tunnel.auth.manager import auth_manager
 from tunnel.utils.rate_limiter import rate_limiter
@@ -33,15 +34,16 @@ manager = ConnectionManager(
 # Global TCP handler
 tcp_handler = TCPHandler(manager)
 
-# Load auth keys from environment
-auth_manager.load_keys_from_env()
+# Load auth keys: file first (persisted), then environment
+auth_manager.configure_from_env()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan"""
     rate_limiter.configure_from_env()
-    print(f"[Server] Starting up... rate_limit={rate_limiter.max_requests}/{rate_limiter.window_seconds}s backend={rate_limiter.backend}")
+    auth_manager.configure_from_env()
+    print(f"[Server] Starting up... rate_limit={rate_limiter.max_requests}/{rate_limiter.window_seconds}s backend={rate_limiter.backend} auth={'enabled' if auth_manager.is_enabled else 'disabled'}")
 
     async def _stale_sweeper():
         while True:
@@ -72,6 +74,7 @@ app = FastAPI(
 # Include routers
 app.include_router(dashboard_router)
 app.include_router(webhook_router)
+app.include_router(auth_router)
 
 
 @app.get("/metrics")
