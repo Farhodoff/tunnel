@@ -78,6 +78,10 @@ class ConnectPayload:
     subdomain: Optional[str]
     local_port: int
     auth_token: Optional[str] = None
+    tcp_enabled: bool = False
+    tcp_public_port: int = 0  # 0 = auto-assign
+    tcp_target_host: str = "127.0.0.1"
+    tcp_target_port: Optional[int] = None  # default = local_port
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -91,6 +95,8 @@ class ConnectAckPayload:
     public_url: str
     status: str = "success"
     error: Optional[str] = None
+    tcp_port: Optional[int] = None
+    tcp_public_url: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -170,23 +176,35 @@ class ErrorPayload:
 
 
 # Helper functions
-def create_connect_message(subdomain: Optional[str], local_port: int, 
-                          auth_token: Optional[str] = None) -> Message:
+def create_connect_message(subdomain: Optional[str], local_port: int,
+                           auth_token: Optional[str] = None,
+                           tcp_enabled: bool = False,
+                           tcp_public_port: int = 0,
+                           tcp_target_host: str = "127.0.0.1",
+                           tcp_target_port: Optional[int] = None) -> Message:
     """Create connection request message"""
     payload = ConnectPayload(
         subdomain=subdomain,
         local_port=local_port,
-        auth_token=auth_token
+        auth_token=auth_token,
+        tcp_enabled=tcp_enabled,
+        tcp_public_port=tcp_public_port,
+        tcp_target_host=tcp_target_host,
+        tcp_target_port=tcp_target_port if tcp_target_port is not None else local_port,
     )
     return Message.create(MessageType.CONNECT, payload.to_dict())
 
 
-def create_connect_ack(tunnel_id: str, subdomain: str, public_url: str) -> Message:
+def create_connect_ack(tunnel_id: str, subdomain: str, public_url: str,
+                       tcp_port: Optional[int] = None,
+                       tcp_public_url: Optional[str] = None) -> Message:
     """Create connection acknowledgment"""
     payload = ConnectAckPayload(
         tunnel_id=tunnel_id,
         subdomain=subdomain,
-        public_url=public_url
+        public_url=public_url,
+        tcp_port=tcp_port,
+        tcp_public_url=tcp_public_url,
     )
     return Message.create(MessageType.CONNECT_ACK, payload.to_dict())
 

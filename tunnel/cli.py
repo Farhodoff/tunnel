@@ -74,6 +74,10 @@ def run_client():
                        help="Local server port (default: 3000)")
     parser.add_argument("--subdomain", help="Custom subdomain")
     parser.add_argument("--token", help="Auth token")
+    parser.add_argument("--tcp", action="store_true", help="Enable TCP forwarding")
+    parser.add_argument("--tcp-port", type=int, default=0, help="Public TCP port on server (0=auto)")
+    parser.add_argument("--tcp-target-host", default="127.0.0.1", help="Local TCP host to forward to")
+    parser.add_argument("--tcp-target-port", type=int, help="Local TCP port to forward to (default: --port)")
     
     args = parser.parse_args()
     
@@ -84,13 +88,19 @@ def run_client():
     print(f"Local port: {args.port}")
     if args.subdomain:
         print(f"Requested subdomain: {args.subdomain}")
+    if args.tcp:
+        print(f"TCP: enabled (public={args.tcp_port or 'auto'} -> {args.tcp_target_host}:{args.tcp_target_port or args.port})")
     print("=" * 50)
     
     client = TunnelClient(
         server_url=args.server,
         local_port=args.port,
         subdomain=args.subdomain,
-        auth_token=args.token
+        auth_token=args.token,
+        tcp_enabled=args.tcp,
+        tcp_public_port=args.tcp_port,
+        tcp_target_host=args.tcp_target_host,
+        tcp_target_port=args.tcp_target_port if args.tcp_target_port is not None else args.port,
     )
     
     try:

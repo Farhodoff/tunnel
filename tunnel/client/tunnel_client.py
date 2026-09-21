@@ -21,16 +21,25 @@ class TunnelClient:
     """Client for creating tunnels"""
     
     def __init__(self, server_url: str, local_port: int,
-                 subdomain: Optional[str] = None, auth_token: Optional[str] = None):
+                 subdomain: Optional[str] = None, auth_token: Optional[str] = None,
+                 tcp_enabled: bool = False, tcp_public_port: int = 0,
+                 tcp_target_host: str = "127.0.0.1",
+                 tcp_target_port: Optional[int] = None):
         self.server_url = server_url
         self.local_port = local_port
         self.subdomain = subdomain
         self.auth_token = auth_token
+        self.tcp_enabled = tcp_enabled
+        self.tcp_public_port = tcp_public_port
+        self.tcp_target_host = tcp_target_host
+        self.tcp_target_port = tcp_target_port if tcp_target_port is not None else local_port
         
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self.session: Optional[aiohttp.ClientSession] = None
         self.tunnel_id: Optional[str] = None
         self.public_url: Optional[str] = None
+        self.tcp_public_url: Optional[str] = None
+        self.tcp_port: Optional[int] = None
         self.connected = False
         
         self._ping_task: Optional[asyncio.Task] = None
@@ -54,7 +63,11 @@ class TunnelClient:
             connect_msg = create_connect_message(
                 subdomain=self.subdomain,
                 local_port=self.local_port,
-                auth_token=self.auth_token
+                auth_token=self.auth_token,
+                tcp_enabled=self.tcp_enabled,
+                tcp_public_port=self.tcp_public_port,
+                tcp_target_host=self.tcp_target_host,
+                tcp_target_port=self.tcp_target_port,
             )
             await self.ws.send(connect_msg.to_json())
             
@@ -70,6 +83,8 @@ class TunnelClient:
             if response.msg_type == MessageType.CONNECT_ACK.value:
                 self.tunnel_id = response.payload.get("tunnel_id")
                 self.public_url = response.payload.get("public_url")
+                self.tcp_port = response.payload.get("tcp_port")
+                self.tcp_public_url = response.payload.get("tcp_public_url")
                 assigned_subdomain = response.payload.get("subdomain")
                 self.connected = True
                 self._reconnect_delay = 1.0
@@ -81,6 +96,8 @@ class TunnelClient:
                 print(f"[Client] Tunnel ID: {self.tunnel_id}")
                 print(f"[Client] Public URL: {self.public_url}")
                 print(f"[Client] Local port: {self.local_port}")
+                if self.tcp_public_url:
+                    print(f"[Client] TCP URL: {self.tcp_public_url} -> {self.tcp_target_host}:{self.tcp_target_port}")
                 print(f"\n[Client] Your server is accessible at: {self.public_url}\n")
                 
                 # Start ping task

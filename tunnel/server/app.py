@@ -135,6 +135,10 @@ async def websocket_endpoint(websocket: WebSocket):
         subdomain = payload.get("subdomain")
         local_port = payload.get("local_port", 3000)
         auth_token = payload.get("auth_token")
+        tcp_enabled = bool(payload.get("tcp_enabled", False))
+        tcp_public_port = int(payload.get("tcp_public_port") or 0)
+        tcp_target_host = payload.get("tcp_target_host") or "127.0.0.1"
+        tcp_target_port = payload.get("tcp_target_port") or local_port
         
         # Validate auth token
         if auth_manager.is_enabled:
@@ -153,20 +157,59 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close()
             return
 
+        # Validate TCP port if requested
+        if tcp_enabled:
+            if tcp_public_port < 0 or tcp_public_port > 65535:
+                error = create_error(ErrorCode.INVALID_MESSAGE, "Invalid tcp_public_port (0-65535)")
+                await websocket.send_text(error.to_json())
+                await websocket.close()
+                return
+            if tcp_public_port and tcp_handler.is_port_in_use(tcp_public_port):
+                error = create_error(ErrorCode.SUBDOMAIN_TAKEN, f"TCP port {tcp_public_port} is taken")
+                await websocket.send_text(error.to_json())
+                await websocket.close()
+                return
+
         # Create tunnel
-        tunnel = await manager.create_tunnel(websocket, local_port, subdomain)
+        tunnel = await manager.create_tunnel(
+            websocket, local_port, subdomain,
+            tcp_enabled=tcp_enabled,
+            tcp_public_port=tcp_public_port,
+            tcp_target_host=tcp_target_host,
+            tcp_target_port=tcp_target_port,
+        )
         
         if not tunnel:
             error = create_error(ErrorCode.SUBDOMAIN_TAKEN, f"Subdomain '{subdomain}' is taken")
             await websocket.send_text(error.to_json())
             await websocket.close()
             return
+
+        # Start TCP listener if requested
+        tcp_port_actual: Optional[int] = None
+        if tcp_enabled:
+            try:
+                await tcp_handler.start_tcp_listener(
+                    tcp_public_port, tunnel.tunnel_id,
+                    tcp_target_host, tcp_target_port,
+                )
+                tcp_port_actual = tcp_handler.get_listener_port(tunnel.tunnel_id)
+                tunnel.tcp_public_port = tcp_port_actual
+            except OSError as e:
+                await manager.remove_tunnel(tunnel.tunnel_id)
+                error = create_error(ErrorCode.INTERNAL_ERROR, f"TCP listen failed: {e}")
+                await websocket.send_text(error.to_json())
+                await websocket.close()
+                return
         
         # Send acknowledgment
+        tcp_public_url = f"tcp://{manager.base_domain}:{tcp_port_actual}" if tcp_port_actual else None
         ack = create_connect_ack(
             tunnel_id=tunnel.tunnel_id,
             subdomain=tunnel.subdomain,
-            public_url=manager.get_public_url(tunnel.subdomain)
+            public_url=manager.get_public_url(tunnel.subdomain),
+            tcp_port=tcp_port_actual,
+            tcp_public_url=tcp_public_url,
         )
         await websocket.send_text(ack.to_json())
         

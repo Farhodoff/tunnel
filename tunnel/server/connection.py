@@ -42,6 +42,10 @@ class Tunnel:
     last_ping: float = field(default_factory=time.time)
     is_active: bool = True
     pending_requests: Dict[str, asyncio.Future] = field(default_factory=dict)
+    tcp_enabled: bool = False
+    tcp_public_port: Optional[int] = None
+    tcp_target_host: str = "127.0.0.1"
+    tcp_target_port: Optional[int] = None
     
     def touch(self):
         """Update last activity timestamp"""
@@ -109,7 +113,11 @@ class ConnectionManager:
         return f"{scheme}://{subdomain}.{self.base_domain}"
     
     async def create_tunnel(self, websocket: Any, local_port: int,
-                           requested_subdomain: Optional[str] = None) -> Optional[Tunnel]:
+                           requested_subdomain: Optional[str] = None,
+                           tcp_enabled: bool = False,
+                           tcp_public_port: int = 0,
+                           tcp_target_host: str = "127.0.0.1",
+                           tcp_target_port: Optional[int] = None) -> Optional[Tunnel]:
         """Create new tunnel"""
         async with self._lock:
             # Generate or validate subdomain
@@ -132,7 +140,11 @@ class ConnectionManager:
                 tunnel_id=tunnel_id,
                 subdomain=subdomain,
                 websocket=websocket,
-                local_port=local_port
+                local_port=local_port,
+                tcp_enabled=bool(tcp_enabled),
+                tcp_public_port=tcp_public_port or None,
+                tcp_target_host=tcp_target_host or "127.0.0.1",
+                tcp_target_port=tcp_target_port if tcp_target_port is not None else local_port,
             )
             
             self.tunnels[tunnel_id] = tunnel

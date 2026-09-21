@@ -33,6 +33,26 @@ class TCPHandler:
         self._connections: Dict[str, TCPConnection] = {}
         self._servers: Dict[str, asyncio.Server] = {}  # port -> server
     
+    def get_listener_port(self, tunnel_id: str) -> Optional[int]:
+        """Get actual public port for tunnel (supports port 0 auto-assign)"""
+        server = self._servers.get(tunnel_id)
+        if not server or not server.sockets:
+            return None
+        return server.sockets[0].getsockname()[1]
+
+    def is_port_in_use(self, port: int) -> bool:
+        """Check if public TCP port already taken by another tunnel"""
+        if not port:
+            return False
+        for server in self._servers.values():
+            for sock in (server.sockets or []):
+                try:
+                    if sock.getsockname()[1] == port:
+                        return True
+                except Exception:
+                    continue
+        return False
+
     async def start_tcp_listener(self, port: int, tunnel_id: str, remote_host: str, remote_port: int):
         """Start TCP listener for tunnel"""
         
@@ -77,11 +97,15 @@ class TCPHandler:
             finally:
                 await self.close_connection(connection_id, "Client disconnected")
         
-        # Start server
-        server = await asyncio.start_server(handle_client, '0.0.0.0', port)
+        if port and self.is_port_in_use(port):
+            raise OSError(f"TCP port {port} already in use")
+
+        # Start server (port=0 lets OS auto-assign)
+        server = await asyncio.start_server(handle_client, '0.0.0.0', port or 0)
         self._servers[tunnel_id] = server
         
-        print(f"[TCP] Started listener on port {port} for tunnel {tunnel_id}")
+        actual = self.get_listener_port(tunnel_id)
+        print(f"[TCP] Started listener on port {actual} for tunnel {tunnel_id}")
         return server
     
     async def handle_tcp_data(self, tunnel_id: str, payload: Dict):
