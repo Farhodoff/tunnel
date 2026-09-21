@@ -19,3 +19,4 @@ cryptography>=41.0.0
 # Dev
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
+httpx>=0.24.0  # ASGI transport for REST/E2E tests
