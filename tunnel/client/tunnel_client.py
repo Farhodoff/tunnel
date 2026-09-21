@@ -131,18 +131,33 @@ class TunnelClient:
                 break
     
     async def _forward_request(self, request_data: Dict) -> Dict:
-        """Forward request to local server"""
+        """Forward request to local server (binary-safe via base64)"""
+        import base64 as _b64
         method = request_data.get("method", "GET")
         path = request_data.get("path", "/")
         headers = request_data.get("headers", {})
         body = request_data.get("body")
+        body_b64 = request_data.get("body_b64")
         request_id = request_data.get("request_id", "")
         
         local_url = f"http://localhost:{self.local_port}{path}"
         
-        # Filter headers
-        headers = {k: v for k, v in headers.items() 
-                  if k.lower() not in ["host", "content-length"]}
+        # Filter hop-by-hop headers; let aiohttp recalc content-length
+        _hop = {"host", "content-length", "connection", "transfer-encoding",
+                "keep-alive", "proxy-authenticate", "proxy-authorization",
+                "te", "trailer", "upgrade"}
+        headers = {k: v for k, v in headers.items()
+                   if k.lower() not in _hop}
+        
+        if body_b64:
+            try:
+                raw_body = _b64.b64decode(body_b64)
+            except Exception:
+                raw_body = body.encode() if body else None
+        elif body:
+            raw_body = body.encode() if isinstance(body, str) else body
+        else:
+            raw_body = None
         
         try:
             timeout = aiohttp.ClientTimeout(total=30)
@@ -150,17 +165,24 @@ class TunnelClient:
                 method=method,
                 url=local_url,
                 headers=headers,
-                data=body if body else None,
+                data=raw_body,
                 timeout=timeout
             ) as response:
                 
-                response_body = await response.text()
+                raw_resp = await response.read()
+                import base64 as _b64resp
+                resp_b64 = _b64resp.b64encode(raw_resp).decode() if raw_resp else None
+                try:
+                    resp_text = raw_resp.decode("utf-8") if raw_resp else ""
+                except UnicodeDecodeError:
+                    resp_text = ""
                 
                 return {
                     "request_id": request_id,
                     "status_code": response.status,
                     "headers": dict(response.headers),
-                    "body": response_body
+                    "body": resp_text,
+                    "body_b64": resp_b64,
                 }
                 
         except aiohttp.ClientError as e:
@@ -206,7 +228,8 @@ class TunnelClient:
                             request_id=response_data["request_id"],
                             status_code=response_data["status_code"],
                             headers=response_data["headers"],
-                            body=response_data["body"]
+                            body=response_data.get("body"),
+                            body_b64=response_data.get("body_b64"),
                         )
                         await self.ws.send(response_msg.to_json())
                     

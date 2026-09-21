@@ -3,10 +3,32 @@ Server Connection Management
 """
 
 import asyncio
+import re
 import time
 import uuid
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 from dataclasses import dataclass, field
+
+
+RESERVED_SUBDOMAINS = {
+    "www", "api", "dashboard", "metrics", "health",
+    "webhooks", "webhook", "admin", "static", "assets",
+    "tunnel", "mail", "ftp", "localhost",
+}
+
+_SUBDOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def validate_subdomain(subdomain: Optional[str]) -> Tuple[bool, str]:
+    """Validate requested subdomain. Returns (ok, reason)."""
+    if not subdomain:
+        return True, ""  # auto-generated, always ok
+    s = subdomain.lower()
+    if s in RESERVED_SUBDOMAINS:
+        return False, f"Subdomain '{subdomain}' is reserved"
+    if not _SUBDOMAIN_RE.match(s):
+        return False, f"Invalid subdomain '{subdomain}': use 1-63 chars a-z 0-9 hyphen"
+    return True, ""
 
 
 @dataclass
@@ -50,8 +72,9 @@ class Tunnel:
 class ConnectionManager:
     """Manages all tunnel connections"""
     
-    def __init__(self, base_domain: str = "tunnel.dev"):
+    def __init__(self, base_domain: str = "tunnel.dev", use_https: bool = False):
         self.base_domain = base_domain
+        self.use_https = use_https
         self.tunnels: Dict[str, Tunnel] = {}  # tunnel_id -> Tunnel
         self.subdomain_map: Dict[str, str] = {}  # subdomain -> tunnel_id
         self._lock = asyncio.Lock()
@@ -70,9 +93,20 @@ class ConnectionManager:
         self._request_counter += 1
         return f"req_{self._request_counter}_{int(time.time() * 1000)}"
     
-    def get_public_url(self, subdomain: str) -> str:
+    def set_base_domain(self, domain: str):
+        """Update base domain (e.g. from CLI --domain or TUNNEL_DOMAIN env)"""
+        if domain:
+            self.base_domain = domain
+
+    def set_use_https(self, enabled: bool):
+        """Update URL scheme flag"""
+        self.use_https = bool(enabled)
+
+    def get_public_url(self, subdomain: str, use_https: Optional[bool] = None) -> str:
         """Get public URL for subdomain"""
-        return f"http://{subdomain}.{self.base_domain}"
+        https = self.use_https if use_https is None else use_https
+        scheme = "https" if https else "http"
+        return f"{scheme}://{subdomain}.{self.base_domain}"
     
     async def create_tunnel(self, websocket: Any, local_port: int,
                            requested_subdomain: Optional[str] = None) -> Optional[Tunnel]:
@@ -80,9 +114,13 @@ class ConnectionManager:
         async with self._lock:
             # Generate or validate subdomain
             if requested_subdomain:
-                if requested_subdomain in self.subdomain_map:
+                ok, _ = validate_subdomain(requested_subdomain)
+                if not ok:
+                    return None  # reserved / invalid
+                lowered = requested_subdomain.lower()
+                if lowered in self.subdomain_map or requested_subdomain in self.subdomain_map:
                     return None  # Subdomain taken
-                subdomain = requested_subdomain
+                subdomain = lowered
             else:
                 subdomain = self._generate_subdomain()
                 while subdomain in self.subdomain_map:
@@ -123,7 +161,8 @@ class ConnectionManager:
             return self.tunnels.get(tunnel_id)
     
     async def forward_request(self, subdomain: str, method: str, path: str,
-                             headers: Dict[str, str], body: Optional[str],
+                             headers: Dict[str, str], body: Optional[str] = None,
+                             body_b64: Optional[str] = None,
                              timeout: float = 30.0) -> Optional[Dict]:
         """Forward HTTP request through tunnel"""
         tunnel = await self.get_by_subdomain(subdomain)
@@ -138,7 +177,7 @@ class ConnectionManager:
         # Import here to avoid circular import
         from tunnel.core.protocol import create_http_request
         
-        message = create_http_request(request_id, method, path, headers, body)
+        message = create_http_request(request_id, method, path, headers, body, body_b64)
         
         try:
             await tunnel.websocket.send_text(message.to_json())

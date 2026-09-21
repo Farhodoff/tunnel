@@ -24,7 +24,11 @@ from tunnel.utils.metrics import metrics
 
 
 # Global connection manager
-manager = ConnectionManager()
+import os as _os
+manager = ConnectionManager(
+    base_domain=_os.getenv("TUNNEL_DOMAIN", "tunnel.dev"),
+    use_https=bool(_os.getenv("TUNNEL_SSL_CERT") and _os.getenv("TUNNEL_SSL_KEY")),
+)
 
 # Global TCP handler
 tcp_handler = TCPHandler(manager)
@@ -37,8 +41,24 @@ auth_manager.load_keys_from_env()
 async def lifespan(app: FastAPI):
     """Application lifespan"""
     print("[Server] Starting up...")
-    yield
-    print("[Server] Shutting down...")
+
+    async def _stale_sweeper():
+        while True:
+            try:
+                await asyncio.sleep(60)
+                await manager.cleanup_stale(max_idle=300)
+                rate_limiter.cleanup()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"[Server] sweeper error: {e}")
+
+    sweeper = asyncio.create_task(_stale_sweeper())
+    try:
+        yield
+    finally:
+        sweeper.cancel()
+        print("[Server] Shutting down...")
 
 
 app = FastAPI(
@@ -87,6 +107,8 @@ async def health():
 @app.get("/api/tunnels")
 async def list_tunnels():
     stats = await manager.get_stats()
+    stats["base_domain"] = manager.base_domain
+    stats["use_https"] = manager.use_https
     return stats
 
 
@@ -122,6 +144,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.close()
                 return
         
+        # Validate subdomain before creating tunnel
+        from tunnel.server.connection import validate_subdomain
+        _ok, _reason = validate_subdomain(subdomain)
+        if not _ok:
+            error = create_error(ErrorCode.INVALID_MESSAGE, _reason)
+            await websocket.send_text(error.to_json())
+            await websocket.close()
+            return
+
         # Create tunnel
         tunnel = await manager.create_tunnel(websocket, local_port, subdomain)
         
@@ -220,23 +251,28 @@ async def proxy_request(request: Request, path: str):
     # Build request
     method = request.method
     headers = dict(request.headers)
-    
-    # Read body
+
+    # Read raw body (binary-safe -> base64 for WS transport)
+    import base64 as _b64
     body = None
-    if method in ["POST", "PUT", "PATCH"]:
-        try:
-            body_bytes = await request.body()
-            if body_bytes:
-                body = body_bytes.decode("utf-8", errors="ignore")
-        except:
-            pass
-    
-    # Build path with query string
-    query = str(request.query_params) if request.query_params else ""
+    body_b64 = None
+    try:
+        body_bytes = await request.body()
+        if body_bytes:
+            body_b64 = _b64.b64encode(body_bytes).decode()
+            try:
+                body = body_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                body = None  # binary only, client must use body_b64
+    except Exception:
+        pass
+
+    # Build path with query string (preserve raw query)
+    raw_query = request.url.query
     full_path = f"/{path}"
-    if query:
-        full_path += f"?{query}"
-    
+    if raw_query:
+        full_path += f"?{raw_query}"
+
     # Forward request
     start_time = time.time()
     response_data = await manager.forward_request(
@@ -244,7 +280,8 @@ async def proxy_request(request: Request, path: str):
         method=method,
         path=full_path,
         headers=headers,
-        body=body
+        body=body,
+        body_b64=body_b64,
     )
     duration_ms = (time.time() - start_time) * 1000
     
@@ -263,8 +300,29 @@ async def proxy_request(request: Request, path: str):
     request_logger.log(method, full_path, subdomain, client_ip, status_code, duration_ms)
     metrics.record_request(method, status_code, duration_ms)
     
+    # Decode body (prefer binary-safe body_b64, fallback to legacy body)
+    import base64 as _b64dec
+    content: bytes = b""
+    if response_data.get("body_b64"):
+        try:
+            content = _b64dec.b64decode(response_data["body_b64"])
+        except Exception:
+            content = (response_data.get("body") or "").encode()
+    else:
+        content = (response_data.get("body") or "").encode()
+
+    # Preserve upstream headers except hop-by-hop; let Starlette set content-length
+    _hop_resp = {"content-length", "connection", "transfer-encoding",
+                 "keep-alive", "proxy-authenticate", "proxy-authorization",
+                 "te", "trailer", "upgrade"}
+    resp_headers = {k: v for k, v in (response_data.get("headers") or {}).items()
+                    if k.lower() not in _hop_resp}
+    # Ensure content-type always present (case-insensitive check)
+    if not any(k.lower() == "content-type" for k in resp_headers):
+        resp_headers["content-type"] = "application/octet-stream"
+
     return Response(
-        content=response_data.get("body", ""),
+        content=content,
         status_code=status_code,
-        headers={"content-type": response_data.get("headers", {}).get("content-type", "text/plain")}
+        headers=resp_headers,
     )

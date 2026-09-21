@@ -43,7 +43,12 @@ class FakeResponse:
         self._body = body
 
     async def text(self):
-        return self._body
+        return self._body if isinstance(self._body, str) else self._body.decode()
+
+    async def read(self):
+        if isinstance(self._body, bytes):
+            return self._body
+        return self._body.encode()
 
     async def __aenter__(self):
         return self

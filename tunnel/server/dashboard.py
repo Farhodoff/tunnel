@@ -227,13 +227,15 @@ DASHBOARD_HTML = """
                     return;
                 }
                 
+                const baseDomain = window.location.hostname.split('.').slice(-2).join('.') || 'tunnel.dev';
+                const scheme = window.location.protocol === 'https:' ? 'https' : 'http';
                 listContainer.innerHTML = `
                     <ul class="tunnel-list">
                         ${data.subdomains.map(subdomain => `
                             <li class="tunnel-item">
                                 <div class="tunnel-info">
                                     <span class="tunnel-subdomain">${subdomain}</span>
-                                    <span class="tunnel-url">http://${subdomain}.tunnel.dev</span>
+                                    <span class="tunnel-url">${scheme}://${subdomain}.${data.base_domain || baseDomain}</span>
                                 </div>
                                 <span class="status-badge status-active">Active</span>
                             </li>

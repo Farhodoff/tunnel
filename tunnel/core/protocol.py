@@ -105,6 +105,7 @@ class HTTPRequestPayload:
     path: str
     headers: Dict[str, str]
     body: Optional[str] = None
+    body_b64: Optional[str] = None  # base64-encoded raw bytes (binary-safe)
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -117,6 +118,7 @@ class HTTPResponsePayload:
     status_code: int
     headers: Dict[str, str]
     body: Optional[str] = None
+    body_b64: Optional[str] = None  # base64-encoded raw bytes (binary-safe)
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -190,26 +192,30 @@ def create_connect_ack(tunnel_id: str, subdomain: str, public_url: str) -> Messa
 
 
 def create_http_request(request_id: str, method: str, path: str,
-                       headers: Dict[str, str], body: Optional[str] = None) -> Message:
+                       headers: Dict[str, str], body: Optional[str] = None,
+                       body_b64: Optional[str] = None) -> Message:
     """Create HTTP request message"""
     payload = HTTPRequestPayload(
         request_id=request_id,
         method=method,
         path=path,
         headers=headers,
-        body=body
+        body=body,
+        body_b64=body_b64
     )
     return Message.create(MessageType.HTTP_REQUEST, payload.to_dict())
 
 
 def create_http_response(request_id: str, status_code: int,
-                        headers: Dict[str, str], body: Optional[str] = None) -> Message:
+                        headers: Dict[str, str], body: Optional[str] = None,
+                        body_b64: Optional[str] = None) -> Message:
     """Create HTTP response message"""
     payload = HTTPResponsePayload(
         request_id=request_id,
         status_code=status_code,
         headers=headers,
-        body=body
+        body=body,
+        body_b64=body_b64
     )
     return Message.create(MessageType.HTTP_RESPONSE, payload.to_dict())
 

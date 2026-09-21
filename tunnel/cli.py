@@ -11,18 +11,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import uvicorn
-from tunnel.server.app import app as server_app
+from tunnel.server.app import app as server_app, manager as connection_manager
 from tunnel.client.tunnel_client import TunnelClient
 
 
 def run_server():
     """Run tunnel server"""
+    import os
     parser = argparse.ArgumentParser(description="Tunnel Server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
-    parser.add_argument("--port", type=int, default=8080, help="Port to bind")
-    parser.add_argument("--domain", default="tunnel.dev", help="Base domain")
-    parser.add_argument("--ssl-cert", help="SSL certificate file")
-    parser.add_argument("--ssl-key", help="SSL key file")
+    parser.add_argument("--host", default=os.getenv("TUNNEL_HOST", "0.0.0.0"), help="Host to bind")
+    parser.add_argument("--port", type=int, default=int(os.getenv("TUNNEL_PORT", "8080")), help="Port to bind")
+    parser.add_argument("--domain", default=os.getenv("TUNNEL_DOMAIN", "tunnel.dev"), help="Base domain")
+    parser.add_argument("--ssl-cert", default=os.getenv("TUNNEL_SSL_CERT"), help="SSL certificate file")
+    parser.add_argument("--ssl-key", default=os.getenv("TUNNEL_SSL_KEY"), help="SSL key file")
     
     args = parser.parse_args()
     
@@ -33,12 +34,16 @@ def run_server():
     print(f"Port: {args.port}")
     print(f"Domain: {args.domain}")
     
+    # Apply domain + scheme to shared manager BEFORE uvicorn starts
+    connection_manager.set_base_domain(args.domain)
     # SSL configuration
     ssl_cert = args.ssl_cert or "certs/server.crt"
     ssl_key = args.ssl_key or "certs/server.key"
     
     import os
-    if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+    ssl_enabled = bool(ssl_cert and ssl_key and os.path.exists(ssl_cert) and os.path.exists(ssl_key))
+    connection_manager.set_use_https(ssl_enabled)
+    if ssl_enabled:
         print(f"SSL: Enabled (cert: {ssl_cert})")
         print(f"WebSocket: wss://{args.host}:{args.port}/tunnel")
         print(f"Dashboard: https://{args.host}:{args.port}/dashboard")
