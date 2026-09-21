@@ -1,29 +1,42 @@
 # Systemd Service File for Tunnel Server
-# Copy to: /etc/systemd/system/tunnel.service
-# Enable: sudo systemctl enable tunnel
-# Start: sudo systemctl start tunnel
+# Install: sudo cp deploy/tunnel.service /etc/systemd/system/tunnel.service
+#          sudo systemctl daemon-reload && sudo systemctl enable --now tunnel
+# Logs:    journalctl -u tunnel -f
+#
+# Env file: /opt/tunnel/.env  (see .env.example)
+# App dir:  /opt/tunnel        (git clone here, or Docker alternative)
 
 [Unit]
-Description=Tunnel Server
+Description=Tunnel Server (FastAPI + WebSockets)
 After=network.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=tunnel
 Group=tunnel
 WorkingDirectory=/opt/tunnel
-Environment=PATH=/opt/tunnel/venv/bin
-EnvironmentFile=/opt/tunnel/.env
-ExecStart=/opt/tunnel/venv/bin/python -m tunnel.cli server --host 0.0.0.0 --port 8080
+Environment=PATH=/opt/tunnel/venv/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/opt/tunnel/.env
+# NOTE: no --host/--port flags here on purpose: CLI reads
+# TUNNEL_HOST / TUNNEL_PORT / TUNNEL_DOMAIN / TUNNEL_REDIS_URL from env.
+ExecStart=/opt/tunnel/venv/bin/python -m tunnel.cli server
 Restart=always
 RestartSec=5
 
-# Security
+# Many concurrent WS connections
+LimitNOFILE=65535
+
+# Security hardening (certs are read-only, logs via journald)
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/tunnel/logs
+ReadWritePaths=/opt/tunnel/certs
+
+# Logging to journald (TUNNEL_LOG_FILE is intentionally unused here)
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

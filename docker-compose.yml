@@ -3,8 +3,13 @@ services:
     build: .
     ports:
       - "8080:8080"
+      # Uncomment + open UFW if you use fixed TCP ports:
+      # - "19000-19100:19000-19100"
+    env_file:
+      - path: .env
+        required: false
     environment:
-      - TUNNEL_DOMAIN=tunnel.dev
+      - TUNNEL_DOMAIN=${TUNNEL_DOMAIN:-tunnel.dev}
       - TUNNEL_API_KEYS=${TUNNEL_API_KEYS:-}
       - TUNNEL_RATE_LIMIT=${TUNNEL_RATE_LIMIT:-100}
       - TUNNEL_RATE_WINDOW=${TUNNEL_RATE_WINDOW:-60}
@@ -22,8 +27,11 @@ services:
   # Run with: TUNNEL_REDIS_URL=redis://redis:6379/0 docker compose --profile with-redis up
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    volumes:
+      - redis-data:/data
     restart: unless-stopped
     profiles:
       - with-redis
+
+volumes:
+  redis-data:
