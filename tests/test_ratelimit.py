@@ -1,4 +1,5 @@
 """Rate limiter: memory, env config, redis fallback + distribution."""
+
 import time
 
 from tunnel.utils.rate_limiter import RateLimiter
@@ -25,8 +26,9 @@ def test_env_config(monkeypatch):
 
 
 def test_bad_redis_falls_back_to_memory():
-    rl = RateLimiter(max_requests=2, window_seconds=60,
-                     redis_url="redis://127.0.0.1:9/0")
+    rl = RateLimiter(
+        max_requests=2, window_seconds=60, redis_url="redis://127.0.0.1:9/0"
+    )
     # connection refused -> fallback, still enforces via memory
     assert all(rl.is_allowed("k") for _ in range(2))
     assert rl.is_allowed("k") is False
@@ -35,6 +37,7 @@ def test_bad_redis_falls_back_to_memory():
 
 class FakeRedis:
     """Minimal redis stub sharing state across limiter instances."""
+
     store = {}
 
     def incr(self, k):

@@ -11,7 +11,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.responses import JSONResponse
 
 from tunnel.core.protocol import (
-    Message, MessageType, create_connect_ack, create_error, ErrorCode
+    Message,
+    MessageType,
+    create_connect_ack,
+    create_error,
+    ErrorCode,
 )
 from tunnel.server.connection import ConnectionManager
 from tunnel.server.dashboard import router as dashboard_router
@@ -28,6 +32,7 @@ from tunnel.utils.logging import server_logger
 
 # Global connection manager
 import os as _os
+
 manager = ConnectionManager(
     base_domain=_os.getenv("TUNNEL_DOMAIN", "tunnel.dev"),
     use_https=bool(_os.getenv("TUNNEL_SSL_CERT") and _os.getenv("TUNNEL_SSL_KEY")),
@@ -47,7 +52,8 @@ async def lifespan(app: FastAPI):
     auth_manager.configure_from_env()
     server_logger.info(
         f"Starting up... rate_limit={rate_limiter.max_requests}/{rate_limiter.window_seconds}s "
-        f"backend={rate_limiter.backend} auth={'enabled' if auth_manager.is_enabled else 'disabled'}")
+        f"backend={rate_limiter.backend} auth={'enabled' if auth_manager.is_enabled else 'disabled'}"
+    )
 
     async def _stale_sweeper():
         while True:
@@ -72,7 +78,7 @@ app = FastAPI(
     title="Tunnel Server",
     description="Secure tunnel service",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Include routers
@@ -86,10 +92,7 @@ async def get_metrics():
     """Prometheus metrics endpoint"""
     stats = await manager.get_stats()
     metrics.set_active_tunnels(stats.get("active_tunnels", 0))
-    return Response(
-        content=metrics.to_prometheus_format(),
-        media_type="text/plain"
-    )
+    return Response(content=metrics.to_prometheus_format(), media_type="text/plain")
 
 
 @app.get("/api/logs")
@@ -97,7 +100,7 @@ async def get_logs(limit: int = 100, subdomain: Optional[str] = None):
     """Get request logs"""
     return {
         "logs": request_logger.get_entries(limit, subdomain),
-        "stats": request_logger.get_stats()
+        "stats": request_logger.get_stats(),
     }
 
 
@@ -124,20 +127,22 @@ async def list_tunnels():
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for tunnel connections"""
     await websocket.accept()
-    
+
     tunnel = None
-    
+
     try:
         # Wait for connect message
         data = await websocket.receive_text()
         message = Message.from_json(data)
-        
+
         if message.msg_type != MessageType.CONNECT.value:
-            error = create_error(ErrorCode.INVALID_MESSAGE, "First message must be CONNECT")
+            error = create_error(
+                ErrorCode.INVALID_MESSAGE, "First message must be CONNECT"
+            )
             await websocket.send_text(error.to_json())
             await websocket.close()
             return
-        
+
         # Extract connection info
         payload = message.payload
         subdomain = payload.get("subdomain")
@@ -147,17 +152,20 @@ async def websocket_endpoint(websocket: WebSocket):
         tcp_public_port = int(payload.get("tcp_public_port") or 0)
         tcp_target_host = payload.get("tcp_target_host") or "127.0.0.1"
         tcp_target_port = payload.get("tcp_target_port") or local_port
-        
+
         # Validate auth token
         if auth_manager.is_enabled:
             if not auth_manager.validate_key(auth_token):
-                error = create_error(ErrorCode.AUTH_FAILED, "Invalid or missing API key")
+                error = create_error(
+                    ErrorCode.AUTH_FAILED, "Invalid or missing API key"
+                )
                 await websocket.send_text(error.to_json())
                 await websocket.close()
                 return
-        
+
         # Validate subdomain before creating tunnel
         from tunnel.server.connection import validate_subdomain
+
         _ok, _reason = validate_subdomain(subdomain)
         if not _ok:
             error = create_error(ErrorCode.INVALID_MESSAGE, _reason)
@@ -168,27 +176,35 @@ async def websocket_endpoint(websocket: WebSocket):
         # Validate TCP port if requested
         if tcp_enabled:
             if tcp_public_port < 0 or tcp_public_port > 65535:
-                error = create_error(ErrorCode.INVALID_MESSAGE, "Invalid tcp_public_port (0-65535)")
+                error = create_error(
+                    ErrorCode.INVALID_MESSAGE, "Invalid tcp_public_port (0-65535)"
+                )
                 await websocket.send_text(error.to_json())
                 await websocket.close()
                 return
             if tcp_public_port and tcp_handler.is_port_in_use(tcp_public_port):
-                error = create_error(ErrorCode.SUBDOMAIN_TAKEN, f"TCP port {tcp_public_port} is taken")
+                error = create_error(
+                    ErrorCode.SUBDOMAIN_TAKEN, f"TCP port {tcp_public_port} is taken"
+                )
                 await websocket.send_text(error.to_json())
                 await websocket.close()
                 return
 
         # Create tunnel
         tunnel = await manager.create_tunnel(
-            websocket, local_port, subdomain,
+            websocket,
+            local_port,
+            subdomain,
             tcp_enabled=tcp_enabled,
             tcp_public_port=tcp_public_port,
             tcp_target_host=tcp_target_host,
             tcp_target_port=tcp_target_port,
         )
-        
+
         if not tunnel:
-            error = create_error(ErrorCode.SUBDOMAIN_TAKEN, f"Subdomain '{subdomain}' is taken")
+            error = create_error(
+                ErrorCode.SUBDOMAIN_TAKEN, f"Subdomain '{subdomain}' is taken"
+            )
             await websocket.send_text(error.to_json())
             await websocket.close()
             return
@@ -198,20 +214,28 @@ async def websocket_endpoint(websocket: WebSocket):
         if tcp_enabled:
             try:
                 await tcp_handler.start_tcp_listener(
-                    tcp_public_port, tunnel.tunnel_id,
-                    tcp_target_host, tcp_target_port,
+                    tcp_public_port,
+                    tunnel.tunnel_id,
+                    tcp_target_host,
+                    tcp_target_port,
                 )
                 tcp_port_actual = tcp_handler.get_listener_port(tunnel.tunnel_id)
                 tunnel.tcp_public_port = tcp_port_actual
             except OSError as e:
                 await manager.remove_tunnel(tunnel.tunnel_id)
-                error = create_error(ErrorCode.INTERNAL_ERROR, f"TCP listen failed: {e}")
+                error = create_error(
+                    ErrorCode.INTERNAL_ERROR, f"TCP listen failed: {e}"
+                )
                 await websocket.send_text(error.to_json())
                 await websocket.close()
                 return
-        
+
         # Send acknowledgment
-        tcp_public_url = f"tcp://{manager.base_domain}:{tcp_port_actual}" if tcp_port_actual else None
+        tcp_public_url = (
+            f"tcp://{manager.base_domain}:{tcp_port_actual}"
+            if tcp_port_actual
+            else None
+        )
         ack = create_connect_ack(
             tunnel_id=tunnel.tunnel_id,
             subdomain=tunnel.subdomain,
@@ -220,36 +244,40 @@ async def websocket_endpoint(websocket: WebSocket):
             tcp_public_url=tcp_public_url,
         )
         await websocket.send_text(ack.to_json())
-        
-        server_logger.info(f"Tunnel created: {tunnel.subdomain} -> localhost:{local_port}")
-        
+
+        server_logger.info(
+            f"Tunnel created: {tunnel.subdomain} -> localhost:{local_port}"
+        )
+
         # Main message loop
         while True:
             try:
                 data = await websocket.receive_text()
                 message = Message.from_json(data)
-                
+
                 if message.msg_type == MessageType.HTTP_RESPONSE.value:
                     await manager.handle_response(tunnel.tunnel_id, message.payload)
-                
+
                 elif message.msg_type == MessageType.TCP_DATA.value:
                     await tcp_handler.handle_tcp_data(tunnel.tunnel_id, message.payload)
-                
+
                 elif message.msg_type == MessageType.TCP_CLOSE.value:
-                    await tcp_handler.handle_tcp_close(tunnel.tunnel_id, message.payload)
-                
+                    await tcp_handler.handle_tcp_close(
+                        tunnel.tunnel_id, message.payload
+                    )
+
                 elif message.msg_type == MessageType.PONG.value:
                     tunnel.touch()
-                
+
                 elif message.msg_type == MessageType.DISCONNECT.value:
                     break
-                    
+
             except WebSocketDisconnect:
                 break
             except Exception as e:
                 server_logger.error(f"Message error: {e}")
                 break
-                
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -261,10 +289,13 @@ async def websocket_endpoint(websocket: WebSocket):
             server_logger.info(f"Tunnel closed: {tunnel.subdomain}")
 
 
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+@app.api_route(
+    "/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+)
 async def proxy_request(request: Request, path: str):
     """Proxy HTTP requests to tunnels"""
     import uuid as _uuid
+
     # Incoming trace id (or fresh): echoed back as X-Request-ID on every outcome
     trace_id = request.headers.get("x-request-id") or _uuid.uuid4().hex[:12]
 
@@ -275,27 +306,29 @@ async def proxy_request(request: Request, path: str):
             status_code=429,
             content={
                 "error": "Rate limit exceeded",
-                "retry_after": int(rate_limiter.get_reset_time(client_ip) - __import__('time').time())
+                "retry_after": int(
+                    rate_limiter.get_reset_time(client_ip) - __import__("time").time()
+                ),
             },
             headers={"x-request-id": trace_id},
         )
-    
+
     # Extract subdomain from host
     host = request.headers.get("host", "")
     subdomain = None
-    
+
     if "." in host:
         parts = host.split(".")
         if len(parts) >= 2:
             subdomain = parts[0]
-    
+
     if not subdomain:
         return JSONResponse(
             status_code=400,
             content={"error": "Invalid host header"},
             headers={"x-request-id": trace_id},
         )
-    
+
     # Get tunnel
     tunnel = await manager.get_by_subdomain(subdomain)
     if not tunnel:
@@ -304,13 +337,14 @@ async def proxy_request(request: Request, path: str):
             content={"error": f"Tunnel not found: {subdomain}"},
             headers={"x-request-id": trace_id},
         )
-    
+
     # Build request (middleware may inject headers / rewrite path)
     method = request.method
     headers = request_modifier.modify_headers(dict(request.headers))
 
     # Read raw body (binary-safe -> base64 for WS transport)
     import base64 as _b64
+
     body = None
     body_b64 = None
     try:
@@ -342,7 +376,7 @@ async def proxy_request(request: Request, path: str):
         body_b64=body_b64,
     )
     duration_ms = (time.time() - start_time) * 1000
-    
+
     if response_data is None:
         # Log failed request
         request_logger.log(method, full_path, subdomain, client_ip, 502, duration_ms)
@@ -352,15 +386,18 @@ async def proxy_request(request: Request, path: str):
             content={"error": "Failed to forward request"},
             headers={"x-request-id": trace_id},
         )
-    
+
     status_code = response_data.get("status_code", 502)
-    
+
     # Log request
-    request_logger.log(method, full_path, subdomain, client_ip, status_code, duration_ms)
+    request_logger.log(
+        method, full_path, subdomain, client_ip, status_code, duration_ms
+    )
     metrics.record_request(method, status_code, duration_ms)
-    
+
     # Decode body (prefer binary-safe body_b64, fallback to legacy body)
     import base64 as _b64dec
+
     content: bytes = b""
     if response_data.get("body_b64"):
         try:
@@ -371,18 +408,30 @@ async def proxy_request(request: Request, path: str):
         content = (response_data.get("body") or "").encode()
 
     # Preserve upstream headers except hop-by-hop; let Starlette set content-length
-    _hop_resp = {"content-length", "connection", "transfer-encoding",
-                 "keep-alive", "proxy-authenticate", "proxy-authorization",
-                 "te", "trailer", "upgrade"}
-    resp_headers = {k: v for k, v in (response_data.get("headers") or {}).items()
-                    if k.lower() not in _hop_resp}
+    _hop_resp = {
+        "content-length",
+        "connection",
+        "transfer-encoding",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "upgrade",
+    }
+    resp_headers = {
+        k: v
+        for k, v in (response_data.get("headers") or {}).items()
+        if k.lower() not in _hop_resp
+    }
     # Ensure content-type always present (case-insensitive check)
     if not any(k.lower() == "content-type" for k in resp_headers):
         resp_headers["content-type"] = "application/octet-stream"
 
     # Apply response middleware: CORS + security headers
     resp_headers = response_modifier.modify_headers(
-        resp_headers, request_origin=request.headers.get("origin"))
+        resp_headers, request_origin=request.headers.get("origin")
+    )
 
     # Trace id: internal tunnel request_id wins (matches client echo),
     # otherwise the incoming/generated trace id

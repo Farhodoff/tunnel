@@ -103,7 +103,9 @@ async def test_connect_ack_sets_state(monkeypatch):
     monkeypatch.setattr(websockets, "connect", fake_connect)
     monkeypatch.setattr(aiohttp, "ClientSession", lambda: FakeSession())
 
-    client = TunnelClient("ws://localhost:8080", 3000, subdomain="mysub", auth_token="token")
+    client = TunnelClient(
+        "ws://localhost:8080", 3000, subdomain="mysub", auth_token="token"
+    )
     result = await client.connect()
 
     assert result is True
@@ -124,7 +126,9 @@ async def test_connect_ack_sets_state(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_forward_request_filters_headers(monkeypatch):
-    session = FakeSession(response=FakeResponse(status=201, headers={"x-test": "1"}, body="ok"))
+    session = FakeSession(
+        response=FakeResponse(status=201, headers={"x-test": "1"}, body="ok")
+    )
     client = TunnelClient("ws://localhost:8080", 3000)
     client.session = session
 

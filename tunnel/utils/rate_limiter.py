@@ -15,9 +15,10 @@ logger = setup_logger("tunnel.ratelimiter")
 @dataclass
 class RateLimitEntry:
     """Rate limit tracking entry (memory fallback)"""
+
     requests: int = 0
     window_start: float = field(default_factory=time.time)
-    
+
     def reset(self):
         """Reset counter"""
         self.requests = 0
@@ -26,9 +27,14 @@ class RateLimitEntry:
 
 class RateLimiter:
     """Fixed-window rate limiter with Redis backend + memory fallback"""
-    
-    def __init__(self, max_requests: int = 100, window_seconds: int = 60,
-                 redis_url: Optional[str] = None, prefix: str = "tunelimit:"):
+
+    def __init__(
+        self,
+        max_requests: int = 100,
+        window_seconds: int = 60,
+        redis_url: Optional[str] = None,
+        prefix: str = "tunelimit:",
+    ):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.redis_url = redis_url or None
@@ -38,9 +44,12 @@ class RateLimiter:
         self._redis_failed = False
 
     # -- configuration --
-    def configure(self, max_requests: Optional[int] = None,
-                  window_seconds: Optional[int] = None,
-                  redis_url: Optional[str] = None):
+    def configure(
+        self,
+        max_requests: Optional[int] = None,
+        window_seconds: Optional[int] = None,
+        redis_url: Optional[str] = None,
+    ):
         """Update settings at runtime (e.g. from CLI/env)"""
         if max_requests is not None:
             self.max_requests = max_requests
@@ -62,8 +71,9 @@ class RateLimiter:
         except ValueError:
             win = self.window_seconds
         redis_url = os.getenv(f"{prefix}REDIS_URL", self.redis_url or "")
-        self.configure(max_requests=max_r, window_seconds=win,
-                       redis_url=redis_url or None)
+        self.configure(
+            max_requests=max_r, window_seconds=win, redis_url=redis_url or None
+        )
         return self
 
     @property
@@ -83,6 +93,7 @@ class RateLimiter:
             return self._redis
         try:
             import redis  # optional dependency
+
             client = redis.StrictRedis.from_url(self.redis_url, decode_responses=True)
             client.ping()
             self._redis = client
@@ -126,7 +137,7 @@ class RateLimiter:
             logger.warning(f"Redis error ({e}), fallback to memory")
             self._redis_failed = True
             return self._memory_allowed(key)
-    
+
     def get_remaining(self, key: str) -> int:
         """Get remaining requests in window"""
         r = self._get_redis()
@@ -143,7 +154,7 @@ class RateLimiter:
         if time.time() - entry.window_start > self.window_seconds:
             return self.max_requests
         return max(0, self.max_requests - entry.requests)
-    
+
     def get_reset_time(self, key: str) -> float:
         """Get time when limit resets"""
         r = self._get_redis()
@@ -158,12 +169,13 @@ class RateLimiter:
         if not entry:
             return time.time()
         return entry.window_start + self.window_seconds
-    
+
     def cleanup(self, max_age: float = 300):
         """Remove old memory entries (Redis keys expire automatically)"""
         current_time = time.time()
         to_remove = [
-            key for key, entry in self._entries.items()
+            key
+            for key, entry in self._entries.items()
             if current_time - entry.window_start > max_age
         ]
         for key in to_remove:

@@ -21,7 +21,9 @@ class CreateKeyBody(BaseModel):
     expires_in_days: Optional[int] = None
 
 
-def _extract_token(x_api_key: Optional[str], authorization: Optional[str]) -> Optional[str]:
+def _extract_token(
+    x_api_key: Optional[str], authorization: Optional[str]
+) -> Optional[str]:
     if x_api_key:
         return x_api_key
     if authorization and authorization.lower().startswith("bearer "):

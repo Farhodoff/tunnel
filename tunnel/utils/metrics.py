@@ -7,7 +7,14 @@ from typing import Dict
 from dataclasses import dataclass, field
 
 try:
-    from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, generate_latest
+    from prometheus_client import (
+        CollectorRegistry,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
+    )
+
     _PROM_AVAILABLE = True
 except ImportError:  # pragma: no cover - fallback path
     _PROM_AVAILABLE = False
@@ -37,14 +44,23 @@ class MetricsCollector:
             # Private registry: reload-safe (no global dup registration)
             self._registry = CollectorRegistry()
             self._counter = Counter(
-                "tunnel_requests_total", "Total proxied requests",
-                ["method", "status"], registry=self._registry)
+                "tunnel_requests_total",
+                "Total proxied requests",
+                ["method", "status"],
+                registry=self._registry,
+            )
             self._histogram = Histogram(
-                "tunnel_request_duration_seconds", "Proxied request latency",
-                ["method"], registry=self._registry, buckets=DURATION_BUCKETS)
+                "tunnel_request_duration_seconds",
+                "Proxied request latency",
+                ["method"],
+                registry=self._registry,
+                buckets=DURATION_BUCKETS,
+            )
             self._gauge = Gauge(
-                "tunnel_active_tunnels", "Number of active tunnels",
-                registry=self._registry)
+                "tunnel_active_tunnels",
+                "Number of active tunnels",
+                registry=self._registry,
+            )
 
     @property
     def use_prom(self) -> bool:
@@ -54,11 +70,15 @@ class MetricsCollector:
         """Record a request"""
         method = method or "UNKNOWN"
         self.requests_total += 1
-        self.requests_by_status[status_code] = self.requests_by_status.get(status_code, 0) + 1
+        self.requests_by_status[status_code] = (
+            self.requests_by_status.get(status_code, 0) + 1
+        )
         self.requests_by_method[method] = self.requests_by_method.get(method, 0) + 1
         if self.use_prom:
             self._counter.labels(method=method, status=str(status_code)).inc()
-            self._histogram.labels(method=method).observe(max(0.0, duration_ms) / 1000.0)
+            self._histogram.labels(method=method).observe(
+                max(0.0, duration_ms) / 1000.0
+            )
 
     def set_active_tunnels(self, count: int):
         """Set active tunnels count"""

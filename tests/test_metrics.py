@@ -1,4 +1,5 @@
 """Metrics (prometheus_client) + X-Request-ID tracing."""
+
 import pytest
 import httpx
 
@@ -29,6 +30,7 @@ def test_record_and_prometheus_shape():
 @pytest.mark.asyncio
 async def test_metrics_endpoint_and_request_id(monkeypatch):
     from tunnel.server import app as appmod
+
     transport = httpx.ASGITransport(app=appmod.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         r = await c.get("/metrics")
@@ -42,15 +44,20 @@ async def test_metrics_endpoint_and_request_id(monkeypatch):
         assert r.headers["x-request-id"]
 
         # incoming trace id is echoed
-        r = await c.get("/nope", headers={"host": "unknown.test.dev",
-                                          "x-request-id": "trace123"})
+        r = await c.get(
+            "/nope", headers={"host": "unknown.test.dev", "x-request-id": "trace123"}
+        )
         assert r.headers["x-request-id"] == "trace123"
 
         # success path echoes internal request_id
         async def fake_forward(**kwargs):
-            return {"request_id": "req_abc", "status_code": 200,
-                    "headers": {"content-type": "text/plain"},
-                    "body": "ok", "body_b64": None}
+            return {
+                "request_id": "req_abc",
+                "status_code": 200,
+                "headers": {"content-type": "text/plain"},
+                "body": "ok",
+                "body_b64": None,
+            }
 
         monkeypatch.setattr(appmod.manager, "forward_request", fake_forward)
         t = await appmod.manager.create_tunnel(object(), 3000, "trace-t")

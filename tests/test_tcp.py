@@ -1,4 +1,5 @@
 """TCP handler wiring tests."""
+
 import asyncio
 
 import pytest
@@ -44,6 +45,7 @@ async def test_tcp_listener_auto_port_and_relay():
     await asyncio.sleep(0.2)
     assert ws.sent, "expected TCP_CONNECT message"
     import json
+
     connect_msg = json.loads(ws.sent[0])
     assert connect_msg["msg_type"] == "tcp_connect"
     cid = connect_msg["payload"]["connection_id"]
@@ -56,14 +58,18 @@ async def test_tcp_listener_auto_port_and_relay():
     data_msg = json.loads(ws.sent[1])
     assert data_msg["msg_type"] == "tcp_data"
     import base64
+
     assert base64.b64decode(data_msg["payload"]["data"]) == b"hi"
 
     # simulate client answering with data(in) -> relayed to public socket
-    await h.handle_tcp_data(t.tunnel_id, {
-        "connection_id": cid,
-        "data": base64.b64encode(b"hello-back").decode(),
-        "direction": "in",
-    })
+    await h.handle_tcp_data(
+        t.tunnel_id,
+        {
+            "connection_id": cid,
+            "data": base64.b64encode(b"hello-back").decode(),
+            "direction": "in",
+        },
+    )
     got = await asyncio.wait_for(reader.read(1024), timeout=2)
     assert got == b"hello-back"
 

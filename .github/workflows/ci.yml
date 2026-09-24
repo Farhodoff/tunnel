@@ -25,7 +25,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-asyncio pytest-cov flake8 black
+        pip install pytest pytest-asyncio pytest-cov flake8 black mypy bandit safety
     
     - name: Lint with flake8
       run: |
@@ -33,7 +33,22 @@ jobs:
     
     - name: Check formatting with black
       run: |
-        black --check tunnel/ || true
+        black --check tunnel/ tests/
+    
+    - name: Type check with mypy
+      run: |
+        mypy tunnel/ --ignore-missing-imports
+    
+    - name: Security audit with bandit
+      # -ll = medium and above; lows (try/except cleanup, asserts) are by design.
+      # The two B104 binds carry # nosec (public server must listen on 0.0.0.0).
+      run: |
+        bandit -r tunnel/ -q -ll
+    
+    - name: Dependency vulnerabilities with safety
+      # Advisory only: live CVE DB is flaky and flags transitive deps.
+      run: |
+        safety check || true
     
     - name: Test with pytest
       run: |

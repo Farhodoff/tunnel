@@ -1,4 +1,5 @@
 """E2E: manager forward + REST + WS validation (TestClient-free)."""
+
 import asyncio
 import base64
 import json
@@ -12,6 +13,7 @@ from tunnel.core.protocol import Message, MessageType
 
 class FakeWS:
     """Server-side fake websocket (send_text -> queue for client task)."""
+
     def __init__(self):
         self.outbox = asyncio.Queue()
         self.sent_to_client = []
@@ -23,6 +25,7 @@ class FakeWS:
 @pytest.mark.asyncio
 async def test_forward_http_binary_roundtrip():
     from tunnel.server.connection import ConnectionManager
+
     m = ConnectionManager(base_domain="e2e.dev")
     ws = FakeWS()
     tunnel = await m.create_tunnel(ws, 3000, "e2ebin")
@@ -41,17 +44,25 @@ async def test_forward_http_binary_roundtrip():
         assert got == raw_req
         # respond with binary + custom header
         resp_body = b"resp:" + got[:10]
-        await m.handle_response(tunnel.tunnel_id, {
-            "request_id": payload["request_id"],
-            "status_code": 200,
-            "headers": {"content-type": "application/octet-stream", "x-custom": "e2e-ok"},
-            "body": "",
-            "body_b64": base64.b64encode(resp_body).decode(),
-        })
+        await m.handle_response(
+            tunnel.tunnel_id,
+            {
+                "request_id": payload["request_id"],
+                "status_code": 200,
+                "headers": {
+                    "content-type": "application/octet-stream",
+                    "x-custom": "e2e-ok",
+                },
+                "body": "",
+                "body_b64": base64.b64encode(resp_body).decode(),
+            },
+        )
 
     task = asyncio.create_task(fake_client())
     resp = await m.forward_request(
-        "e2ebin", "POST", "/echo?x=1",
+        "e2ebin",
+        "POST",
+        "/echo?x=1",
         {"content-type": "application/octet-stream"},
         body=None,
         body_b64=base64.b64encode(raw_req).decode(),
@@ -81,6 +92,7 @@ async def test_rest_health_and_tunnels():
 async def test_ws_validation_reserved_and_taken():
     # mirrors app.websocket_endpoint validation order
     from tunnel.server.connection import validate_subdomain, ConnectionManager
+
     m = ConnectionManager()
     ok, reason = validate_subdomain("dashboard")
     assert not ok and "reserved" in reason.lower()

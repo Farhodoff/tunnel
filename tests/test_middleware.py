@@ -1,4 +1,5 @@
 """Middleware + logging wiring tests."""
+
 import logging
 
 import httpx
@@ -35,9 +36,12 @@ async def test_proxy_response_carries_middleware_headers(monkeypatch):
     from tunnel.server import app as appmod
 
     async def fake_forward(**kwargs):
-        return {"status_code": 200,
-                "headers": {"content-type": "text/plain"},
-                "body": "hi", "body_b64": None}
+        return {
+            "status_code": 200,
+            "headers": {"content-type": "text/plain"},
+            "body": "hi",
+            "body_b64": None,
+        }
 
     monkeypatch.setattr(appmod.manager, "forward_request", fake_forward)
     transport = httpx.ASGITransport(app=app)

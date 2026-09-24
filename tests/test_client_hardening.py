@@ -1,4 +1,5 @@
 """Client hardening: no-leak connect, max retries, local target, config."""
+
 import asyncio
 import json
 
@@ -59,6 +60,7 @@ async def test_failed_handshake_closes_session_and_ws(monkeypatch):
     import websockets
     import aiohttp
     from tunnel.core.protocol import create_error, ErrorCode
+
     ws = FakeWS([create_error(ErrorCode.AUTH_FAILED, "no").to_json()])
     sessions = []
 
@@ -95,21 +97,31 @@ async def test_max_retries_exhausted_returns_1(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_local_host_and_scheme_used():
-    c = TunnelClient("ws://x", 3000, local_host="10.0.0.5", local_https=True, insecure=True)
+    c = TunnelClient(
+        "ws://x", 3000, local_host="10.0.0.5", local_https=True, insecure=True
+    )
     c.session = FakeSession()
-    out = await c._forward_request({"request_id": "r", "method": "GET",
-                                    "path": "/a", "headers": {}, "body": None})
+    out = await c._forward_request(
+        {"request_id": "r", "method": "GET", "path": "/a", "headers": {}, "body": None}
+    )
     assert out["status_code"] == 200
     assert c.session.calls[0]["url"] == "https://10.0.0.5:3000/a"
     assert c.session.calls[0]["ssl"] is False
 
 
 def test_config_file_merge(tmp_path, monkeypatch, capsys):
-    cfg = {"server": "ws://cfg:9", "local_port": 4000, "subdomain": "fromcfg",
-           "token": "tok", "local_host": "10.1.1.1", "reconnect": {"max_attempts": 5}}
+    cfg = {
+        "server": "ws://cfg:9",
+        "local_port": 4000,
+        "subdomain": "fromcfg",
+        "token": "tok",
+        "local_host": "10.1.1.1",
+        "reconnect": {"max_attempts": 5},
+    }
     p = tmp_path / "c.json"
     p.write_text(json.dumps(cfg))
     import sys
+
     monkeypatch.setattr(sys, "argv", ["cli", "--config", str(p)])
 
     created = {}
