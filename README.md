@@ -72,11 +72,14 @@ python -m tunnel.cli server --host 0.0.0.0 --port 8080 --domain tunnel.dev
 ```
 
 **Server Options:**
-- `--host`: Host to bind (default: `0.0.0.0`)
-- `--port`: Port to listen on (default: `8080`)
-- `--domain`: Base domain for the tunnels (default: `tunnel.dev`)
-- `--ssl-cert`: Path to SSL certificate (default: `certs/server.crt`)
-- `--ssl-key`: Path to SSL key (default: `certs/server.key`)
+- `--host`: Host to bind (default: `0.0.0.0`, env `TUNNEL_HOST`)
+- `--port`: Port to listen on (default: `8080`, env `TUNNEL_PORT`)
+- `--domain`: Base domain for the tunnels (default: `tunnel.dev`, env `TUNNEL_DOMAIN`)
+- `--ssl-cert`: Path to SSL certificate (default: `certs/server.crt`, env `TUNNEL_SSL_CERT`)
+- `--ssl-key`: Path to SSL key (default: `certs/server.key`, env `TUNNEL_SSL_KEY`)
+- `--rate-limit`: Requests per minute per IP (default: `100`, env `TUNNEL_RATE_LIMIT`)
+- `--rate-window`: Rate window in seconds (default: `60`, env `TUNNEL_RATE_WINDOW`)
+- `--redis-url`: Redis URL for distributed limiting (default: empty = memory, env `TUNNEL_REDIS_URL`)
 
 *Note: If valid SSL certificates are provided, the server will enable WSS and HTTPS. Otherwise, it defaults to WS and HTTP.*
 
@@ -89,10 +92,39 @@ python -m tunnel.cli client --server ws://localhost:8080 --port 3000 --subdomain
 ```
 
 **Client Options:**
-- `--server`, `-s`: Server WebSocket URL (default: `ws://localhost:8080`)
+- `--server`, `-s`: Server WebSocket URL (default: `ws://localhost:8080`, env `TUNNEL_SERVER`)
 - `--port`, `-p`: Local port you want to expose (default: `3000`)
 - `--subdomain`: Request a specific custom subdomain
-- `--token`: Authentication token (if required by the server)
+- `--token`: Authentication token (if required by the server, env `TUNNEL_TOKEN`)
+- `--local-host`: Local HTTP host (default: `127.0.0.1`)
+- `--local-https`: Use `https://` for the local server
+- `--insecure`: Skip TLS verify for local https
+- `--tcp`: Enable TCP forwarding
+- `--tcp-port`: Public TCP port on server (`0` = auto-assign)
+- `--tcp-target-host` / `--tcp-target-port`: Local TCP target (default host `127.0.0.1`, port = `--port`)
+- `--max-retries`: Max connect attempts, `0` = infinite (default)
+- `--config`, `-c`: JSON config file (env `TUNNEL_CONFIG`, see `examples/client-config.json`)
+
+Config file example (`--config client.json`, CLI flags override file values):
+
+```json
+{
+  "server": "wss://tunnel.example.com",
+  "local_port": 3000,
+  "subdomain": "myapp",
+  "auth_token": "tun_...",
+  "reconnect": {"max_attempts": 0}
+}
+```
+
+TCP example — expose local SSH (`:22`) on server port `19000`:
+
+```bash
+python -m tunnel.cli client --server wss://tunnel.example.com --port 3000 \
+  --subdomain myapp --token tun_... \
+  --tcp --tcp-port 19000 --tcp-target-port 22
+# connect: ssh -p 19000 user@tunnel.example.com
+```
 
 ### 3. Accessing the Services
 
@@ -100,7 +132,47 @@ python -m tunnel.cli client --server ws://localhost:8080 --port 3000 --subdomain
 - **Public URL**: `http://myapp.tunnel.dev` (Routes traffic to your local port `3000`)
 - **WebSocket Endpoint**: `ws://localhost:8080/tunnel`
 
+### 4. API Keys (persisted)
+
+Keys survive restarts via `TUNNEL_API_KEYS_FILE` (default `./api_keys.json`,
+Docker: `/app/data/api_keys.json`). Bootstrap: with no keys configured the
+endpoints are open; after the first key a valid key is required
+(`X-API-Key` header or `Authorization: Bearer`):
+
+```bash
+# create (raw key is shown ONCE)
+curl -X POST http://localhost:8080/api/keys \
+  -H 'Content-Type: application/json' -d '{"name":"ci"}'
+# list / revoke
+curl http://localhost:8080/api/keys -H "X-API-Key: tun_..."
+curl -X DELETE http://localhost:8080/api/keys/<key_id> -H "X-API-Key: tun_..."
+```
+
+Every proxied response carries an `X-Request-ID` header for tracing.
+
 ---
+
+## Production Deployment (VPS)
+
+One-command install (Ubuntu 22.04+, Docker + nginx + certbot + UFW):
+
+```bash
+DOMAIN=tunnel.example.com EMAIL=you@example.com bash deploy/install.sh
+# with Redis:
+DOMAIN=tunnel.example.com EMAIL=you@example.com WITH_REDIS=1 bash deploy/install.sh
+```
+
+Then issue the **wildcard** certificate (required for `*.DOMAIN`, needs DNS-01):
+
+```bash
+sudo certbot certonly --manual --preferred-challenges dns \
+  -d tunnel.example.com -d '*.tunnel.example.com'
+```
+
+DNS records needed: `A tunnel.example.com -> <VPS_IP>`, `A *.tunnel.example.com -> <VPS_IP>`.
+Details: `deploy/` (`tunnel.service`, `nginx.conf` template, `install.sh`).
+Note: serverless platforms (e.g. Vercel) are **not** supported — the tunnel
+needs long-lived WebSockets, in-memory connection state and raw TCP ports.
 
 ## Docker Deployment
 
