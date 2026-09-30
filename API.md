@@ -191,6 +191,26 @@ Create responds with the raw key **once**:
 GET /api/logs?limit=100&subdomain=myapp
 ```
 
+Supported filters are `subdomain`, `method`, `status_code`, `path`, and
+`since` (seconds). Each log entry contains `request_size` and
+`response_size`; the response statistics include aggregate bandwidth totals.
+
+### Dashboard Metrics
+
+```http
+GET /api/metrics?since=3600&subdomain=myapp
+```
+
+Returns a time series of request latency, status codes, request sizes, and
+response sizes for the dashboard.
+
+### Custom Domains
+
+Set `TUNNEL_CUSTOM_DOMAINS=api.example.com=myapp` to route that exact host to
+the `myapp` tunnel. Point the domain's DNS record to the server and include it
+in the reverse proxy's `server_name`; wildcard tunnel domains continue to use
+`TUNNEL_DOMAIN`.
+
 Response:
 ```json
 {
@@ -212,6 +232,17 @@ Response:
   }
 }
 ```
+
+### Replay a Captured Request
+
+```http
+POST /api/logs/{request_id}/replay
+```
+
+Replays the captured request through the original tunnel and returns the
+upstream status, headers, response body, and replay duration. Request logs
+include the request headers and binary-safe body fields (`body` and
+`body_b64`) so the dashboard can inspect and replay recent traffic.
 
 ### Metrics
 
@@ -245,6 +276,10 @@ Response:
 ```http
 GET /webhooks/requests/{endpoint_id}?limit=50
 ```
+
+Webhook endpoint creation and request inspection require an API key when
+authentication is enabled. Capture URLs return `404` for unknown endpoints,
+are rate-limited by client IP, and reject bodies over `TUNNEL_WEBHOOK_MAX_BODY`.
 
 Response:
 ```json

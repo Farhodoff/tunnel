@@ -10,17 +10,22 @@ services:
         required: false
     environment:
       - TUNNEL_DOMAIN=${TUNNEL_DOMAIN:-tunnel.dev}
+      - TUNNEL_CUSTOM_DOMAINS=${TUNNEL_CUSTOM_DOMAINS:-}
       - TUNNEL_API_KEYS=${TUNNEL_API_KEYS:-}
       - TUNNEL_API_KEYS_FILE=/app/data/api_keys.json
       - TUNNEL_RATE_LIMIT=${TUNNEL_RATE_LIMIT:-100}
       - TUNNEL_RATE_WINDOW=${TUNNEL_RATE_WINDOW:-60}
       - TUNNEL_REDIS_URL=${TUNNEL_REDIS_URL:-}
+      - TUNNEL_LOG_RETENTION=${TUNNEL_LOG_RETENTION:-86400}
+      - TUNNEL_WEBHOOK_RETENTION=${TUNNEL_WEBHOOK_RETENTION:-86400}
+      - TUNNEL_WEBHOOK_MAX_BODY=${TUNNEL_WEBHOOK_MAX_BODY:-1048576}
+      - TUNNEL_WEBHOOK_STORE=${TUNNEL_WEBHOOK_STORE:-/app/data/webhooks.json}
     volumes:
       - ./certs:/app/certs
       - tunnel-data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/health | grep -q '\"status\":\"healthy\"'"]
       interval: 30s
       timeout: 10s
       retries: 3

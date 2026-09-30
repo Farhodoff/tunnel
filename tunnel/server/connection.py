@@ -92,9 +92,18 @@ class Tunnel:
 class ConnectionManager:
     """Manages all tunnel connections"""
 
-    def __init__(self, base_domain: str = "tunnel.dev", use_https: bool = False):
+    def __init__(
+        self,
+        base_domain: str = "tunnel.dev",
+        use_https: bool = False,
+        custom_domains: Optional[Dict[str, str]] = None,
+    ):
         self.base_domain = base_domain
         self.use_https = use_https
+        self.custom_domains = {
+            domain.lower().split(":")[0]: subdomain
+            for domain, subdomain in (custom_domains or {}).items()
+        }
         self.tunnels: Dict[str, Tunnel] = {}  # tunnel_id -> Tunnel
         self.subdomain_map: Dict[str, str] = {}  # subdomain -> tunnel_id
         # Lazy lock: asyncio.Lock() binds to the running loop on py3.8/3.9,
@@ -135,6 +144,20 @@ class ConnectionManager:
         https = self.use_https if use_https is None else use_https
         scheme = "https" if https else "http"
         return f"{scheme}://{subdomain}.{self.base_domain}"
+
+    def get_subdomain_for_host(self, host: str) -> Optional[str]:
+        """Resolve a request host to a configured tunnel subdomain."""
+        hostname = (host or "").lower().split(":")[0].rstrip(".")
+        if hostname in self.custom_domains:
+            return self.custom_domains[hostname]
+        suffix = f".{self.base_domain.lower().rstrip('.')}"
+        if hostname.endswith(suffix):
+            candidate = hostname[: -len(suffix)]
+            return candidate if candidate else None
+        # Preserve compatibility with local/test hosts such as app.test.dev.
+        if "." in hostname:
+            return hostname.split(".", 1)[0] or None
+        return None
 
     async def create_tunnel(
         self,

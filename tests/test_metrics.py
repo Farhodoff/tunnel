@@ -4,6 +4,7 @@ import pytest
 import httpx
 
 from tunnel.utils.metrics import MetricsCollector
+from tunnel.utils.request_logger import RequestLogger
 
 
 def test_record_and_prometheus_shape():
@@ -25,6 +26,36 @@ def test_record_and_prometheus_shape():
         assert "tunnel_request_duration_seconds_count" in text
     else:
         assert "tunnel_requests_by_status" in text
+
+
+def test_request_metrics_filter_and_bandwidth():
+    logger = RequestLogger()
+    logger.log(
+        "GET",
+        "/one",
+        "app",
+        "127.0.0.1",
+        200,
+        10,
+        request_id="one",
+        request_size=5,
+        response_size=100,
+    )
+    logger.log(
+        "POST",
+        "/two",
+        "app",
+        "127.0.0.1",
+        500,
+        20,
+        request_id="two",
+        request_size=10,
+        response_size=20,
+    )
+    stats = logger.get_stats_for(method="POST")
+    assert stats["total_requests"] == 1
+    assert stats["request_bytes"] == 10
+    assert stats["response_bytes"] == 20
 
 
 @pytest.mark.asyncio

@@ -8,12 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Request logging and replay functionality
-- Traffic inspection UI for HTTP headers
 - Performance monitoring with latency and bandwidth graphs
 - Custom domain support
 - CLI directory structure for better organization
 - GitHub Actions CI/CD workflow
+
+### Completed
+- Added `POST /api/logs/{request_id}/replay` for replaying captured requests
+- Added recent request inspection and replay controls to the dashboard
+- Added filtered latency/status/bandwidth metrics to the dashboard
+- Added exact custom-domain routing via `TUNNEL_CUSTOM_DOMAINS`
 
 ## [1.0.0] - 2024-01-XX
 
