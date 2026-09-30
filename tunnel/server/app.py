@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.responses import JSONResponse
 
 from tunnel.core.protocol import (
@@ -23,6 +23,7 @@ from tunnel.server.webhook_tester import router as webhook_router
 from tunnel.auth.routes import router as auth_router
 from tunnel.server.tcp_handler import TCPHandler
 from tunnel.auth.manager import auth_manager
+from tunnel.auth.routes import require_admin
 from tunnel.utils.rate_limiter import rate_limiter
 from tunnel.utils.request_logger import request_logger
 from tunnel.utils.metrics import metrics
@@ -33,9 +34,22 @@ from tunnel.utils.logging import server_logger
 # Global connection manager
 import os as _os
 
+
+def _custom_domains_from_env():
+    """Read DOMAIN=SUBDOMAIN pairs from TUNNEL_CUSTOM_DOMAINS."""
+    result = {}
+    for item in _os.getenv("TUNNEL_CUSTOM_DOMAINS", "").split(","):
+        if "=" in item:
+            domain, subdomain = (part.strip().lower() for part in item.split("=", 1))
+            if domain and subdomain:
+                result[domain] = subdomain
+    return result
+
+
 manager = ConnectionManager(
     base_domain=_os.getenv("TUNNEL_DOMAIN", "tunnel.dev"),
     use_https=bool(_os.getenv("TUNNEL_SSL_CERT") and _os.getenv("TUNNEL_SSL_KEY")),
+    custom_domains=_custom_domains_from_env(),
 )
 
 # Global TCP handler
@@ -96,11 +110,91 @@ async def get_metrics():
 
 
 @app.get("/api/logs")
-async def get_logs(limit: int = 100, subdomain: Optional[str] = None):
+async def get_logs(
+    limit: int = 100,
+    subdomain: Optional[str] = None,
+    method: Optional[str] = None,
+    status_code: Optional[int] = None,
+    path: Optional[str] = None,
+    since: Optional[float] = None,
+    offset: int = 0,
+):
     """Get request logs"""
+    filters = {
+        "subdomain": subdomain,
+        "method": method,
+        "status_code": status_code,
+        "path": path,
+        "since": since,
+        "offset": max(0, offset),
+    }
+    filters = {key: value for key, value in filters.items() if value is not None}
     return {
-        "logs": request_logger.get_entries(limit, subdomain),
-        "stats": request_logger.get_stats(),
+        "logs": request_logger.get_entries(limit=max(1, min(limit, 100)), **filters),
+        "stats": request_logger.get_stats_for(
+            **{k: v for k, v in filters.items() if k != "offset"}
+        ),
+    }
+
+
+@app.get("/api/metrics")
+async def get_dashboard_metrics(
+    subdomain: Optional[str] = None,
+    method: Optional[str] = None,
+    since: Optional[float] = None,
+):
+    """Return dashboard-friendly latency, status, and bandwidth metrics."""
+    filters = {
+        k: v
+        for k, v in {"subdomain": subdomain, "method": method, "since": since}.items()
+        if v is not None
+    }
+    entries = request_logger.get_entries(limit=request_logger.max_entries, **filters)
+    return {
+        "stats": request_logger.get_stats_for(**filters),
+        "series": [
+            {
+                "timestamp": entry["timestamp"],
+                "duration_ms": entry["duration_ms"],
+                "status_code": entry["status_code"],
+                "request_size": entry["request_size"],
+                "response_size": entry["response_size"],
+            }
+            for entry in entries
+        ],
+    }
+
+
+@app.post("/api/logs/{request_id}/replay", dependencies=[Depends(require_admin)])
+async def replay_log(request_id: str):
+    """Replay a previously captured request through its original tunnel."""
+    entry = request_logger.get_entry(request_id)
+    if not entry:
+        return JSONResponse(status_code=404, content={"error": "Request log not found"})
+
+    started = time.time()
+    response_data = await manager.forward_request(
+        subdomain=entry["subdomain"],
+        method=entry["method"],
+        path=entry["path"],
+        headers=entry.get("headers") or {},
+        body=entry.get("body"),
+        body_b64=entry.get("body_b64"),
+    )
+    duration_ms = (time.time() - started) * 1000
+    if response_data is None:
+        return JSONResponse(
+            status_code=502,
+            content={"error": "Failed to replay request", "request_id": request_id},
+        )
+
+    return {
+        "request_id": request_id,
+        "status_code": response_data.get("status_code", 502),
+        "headers": response_data.get("headers") or {},
+        "body": response_data.get("body"),
+        "body_b64": response_data.get("body_b64"),
+        "duration_ms": round(duration_ms, 2),
     }
 
 
@@ -120,6 +214,7 @@ async def list_tunnels():
     stats = await manager.get_stats()
     stats["base_domain"] = manager.base_domain
     stats["use_https"] = manager.use_https
+    stats["custom_domains"] = manager.custom_domains
     return stats
 
 
@@ -315,12 +410,7 @@ async def proxy_request(request: Request, path: str):
 
     # Extract subdomain from host
     host = request.headers.get("host", "")
-    subdomain = None
-
-    if "." in host:
-        parts = host.split(".")
-        if len(parts) >= 2:
-            subdomain = parts[0]
+    subdomain = manager.get_subdomain_for_host(host)
 
     if not subdomain:
         return JSONResponse(
@@ -346,9 +436,20 @@ async def proxy_request(request: Request, path: str):
     import base64 as _b64
 
     body = None
+    body_bytes = b""
+    max_body_bytes = request_logger.max_body_bytes
     body_b64 = None
     try:
         body_bytes = await request.body()
+        if len(body_bytes) > max_body_bytes:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "error": "Request body too large",
+                    "max_bytes": max_body_bytes,
+                },
+                headers={"x-request-id": trace_id},
+            )
         if body_bytes:
             body_b64 = _b64.b64encode(body_bytes).decode()
             try:
@@ -379,7 +480,21 @@ async def proxy_request(request: Request, path: str):
 
     if response_data is None:
         # Log failed request
-        request_logger.log(method, full_path, subdomain, client_ip, 502, duration_ms)
+        request_logger.log(
+            method,
+            full_path,
+            subdomain,
+            client_ip,
+            502,
+            duration_ms,
+            user_agent=request.headers.get("user-agent"),
+            request_id=trace_id,
+            headers=headers,
+            body=body,
+            body_b64=body_b64,
+            request_size=len(body_bytes or b""),
+            response_size=0,
+        )
         metrics.record_request(method, 502, duration_ms)
         return JSONResponse(
             status_code=502,
@@ -391,7 +506,17 @@ async def proxy_request(request: Request, path: str):
 
     # Log request
     request_logger.log(
-        method, full_path, subdomain, client_ip, status_code, duration_ms
+        method,
+        full_path,
+        subdomain,
+        client_ip,
+        status_code,
+        duration_ms,
+        user_agent=request.headers.get("user-agent"),
+        request_id=response_data.get("request_id", trace_id),
+        headers=headers,
+        body=body,
+        body_b64=body_b64,
     )
     metrics.record_request(method, status_code, duration_ms)
 

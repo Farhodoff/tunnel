@@ -40,6 +40,10 @@ if [ ! -f "$APP_DIR/.env" ]; then
   sudo sed -i "s/^TUNNEL_DOMAIN=.*/TUNNEL_DOMAIN=$DOMAIN/" "$APP_DIR/.env"
   echo "!! EDIT $APP_DIR/.env : set TUNNEL_API_KEYS (required for prod)"
 fi
+if grep -qE '^TUNNEL_API_KEYS=(your_api_key|[[:space:]]*$)' "$APP_DIR/.env"; then
+  echo "ERROR: set a real TUNNEL_API_KEYS value in $APP_DIR/.env before production use"
+  exit 1
+fi
 sudo mkdir -p "$APP_DIR/certs"
 
 echo "==> [3/6] firewall"
@@ -65,7 +69,10 @@ curl -f http://localhost:8080/health || { echo "server not healthy"; sudo docker
 
 echo "==> [5/6] nginx vhost"
 export DOMAIN
-envsubst '$DOMAIN' < "$APP_DIR/deploy/nginx.conf" | sudo tee /etc/nginx/sites-enabled/tunnel.conf > /dev/null
+CUSTOM_DOMAIN_MAP="$(sudo awk -F= '/^TUNNEL_CUSTOM_DOMAINS=/{print $2}' "$APP_DIR/.env" || true)"
+CUSTOM_DOMAINS="$(printf '%s' "$CUSTOM_DOMAIN_MAP" | tr ',' ' ' | sed -E 's/=[^ ]+//g')"
+export CUSTOM_DOMAINS
+envsubst '$DOMAIN $CUSTOM_DOMAINS' < "$APP_DIR/deploy/nginx.conf" | sudo tee /etc/nginx/sites-enabled/tunnel.conf > /dev/null
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
@@ -76,6 +83,7 @@ echo "Wildcard for tunnels (REQUIRED for *.${DOMAIN}, DNS-01):"
 echo "  sudo certbot certonly --manual --preferred-challenges dns \\"
 echo "    -d $DOMAIN -d '*.$DOMAIN' -m $EMAIL --agree-tos"
 echo "Then: sudo nginx -t && sudo systemctl reload nginx"
+echo "Renewal test: sudo certbot renew --dry-run"
 echo
 echo "DONE. Health: curl http://localhost:8080/health"
 echo "Dashboard: https://$DOMAIN/dashboard (after cert)"

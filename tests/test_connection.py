@@ -49,3 +49,12 @@ def test_public_url_scheme():
     m.set_use_https(False)
     m.set_base_domain("my.dev")
     assert m.get_public_url("a") == "http://a.my.dev"
+
+
+def test_custom_domain_resolves_to_configured_subdomain():
+    m = ConnectionManager(
+        base_domain="tunnel.dev",
+        custom_domains={"hooks.example.com": "myapp"},
+    )
+    assert m.get_subdomain_for_host("hooks.example.com") == "myapp"
+    assert m.get_subdomain_for_host("myapp.tunnel.dev") == "myapp"

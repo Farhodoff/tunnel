@@ -31,6 +31,8 @@ Tunelio is a robust, Python-based tunneling application that exposes your local 
 - **Docker Support**: Easy deployment using Docker and Docker Compose.
 - **SSL Support**: Built-in capabilities to handle SSL certificates.
 - **Monitoring**: Integration with Prometheus for metrics and health monitoring.
+- **Request replay**: Inspect recent traffic and replay requests from the dashboard.
+- **Custom domains**: Route exact domains with `TUNNEL_CUSTOM_DOMAINS`.
 
 ---
 
@@ -113,6 +115,27 @@ You can quickly deploy the tunnel server using Docker Compose.
    ```
 
 This will run the tunnel server on port `8080`. Redis can optionally be enabled by using the `with-redis` profile to support distributed rate limiting.
+
+### Replay, Webhooks, and Custom Domains
+
+Set `TUNNEL_API_KEYS` in production. The replay endpoint and webhook management
+API require `X-API-Key` or `Authorization: Bearer ...`; capture URLs remain
+public but are rate-limited and enforce `TUNNEL_WEBHOOK_MAX_BODY`.
+
+Request logs expire according to `TUNNEL_LOG_RETENTION`. Webhook captures can
+persist across restarts with `TUNNEL_WEBHOOK_STORE` (the default Docker path is
+the mounted `/app/data` volume). The dashboard supports log filtering,
+bandwidth/latency summaries, request inspection, and replay result modals.
+
+For an exact custom domain, configure:
+
+```bash
+TUNNEL_CUSTOM_DOMAINS=hooks.example.com=myapp
+```
+
+Point the domain DNS record to the server and include it in the Nginx
+`server_name`. For wildcard tunnel subdomains, issue a DNS-01 certificate and
+test renewal with `certbot renew --dry-run`.
 
 ---
 
