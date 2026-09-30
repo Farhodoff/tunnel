@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from tunnel.auth.manager import auth_manager
 
-
 router = APIRouter(prefix="/api/keys", tags=["auth"])
 
 
@@ -22,7 +21,8 @@ class CreateKeyBody(BaseModel):
 
 
 def _extract_token(
-    x_api_key: Optional[str], authorization: Optional[str]
+    x_api_key: Optional[str],
+    authorization: Optional[str],
 ) -> Optional[str]:
     if x_api_key:
         return x_api_key

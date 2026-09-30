@@ -30,7 +30,6 @@ from tunnel.utils.metrics import metrics
 from tunnel.utils.middleware import request_modifier, response_modifier
 from tunnel.utils.logging import server_logger
 
-
 # Global connection manager
 import os as _os
 
@@ -120,19 +119,22 @@ async def get_logs(
     offset: int = 0,
 ):
     """Get request logs"""
-    filters = {
-        "subdomain": subdomain,
-        "method": method,
-        "status_code": status_code,
-        "path": path,
-        "since": since,
-        "offset": max(0, offset),
-    }
-    filters = {key: value for key, value in filters.items() if value is not None}
     return {
-        "logs": request_logger.get_entries(limit=max(1, min(limit, 100)), **filters),
+        "logs": request_logger.get_entries(
+            limit=max(1, min(limit, 100)),
+            subdomain=subdomain,
+            method=method,
+            status_code=status_code,
+            path=path,
+            since=since,
+            offset=max(0, offset),
+        ),
         "stats": request_logger.get_stats_for(
-            **{k: v for k, v in filters.items() if k != "offset"}
+            subdomain=subdomain,
+            method=method,
+            status_code=status_code,
+            path=path,
+            since=since,
         ),
     }
 
@@ -144,14 +146,18 @@ async def get_dashboard_metrics(
     since: Optional[float] = None,
 ):
     """Return dashboard-friendly latency, status, and bandwidth metrics."""
-    filters = {
-        k: v
-        for k, v in {"subdomain": subdomain, "method": method, "since": since}.items()
-        if v is not None
-    }
-    entries = request_logger.get_entries(limit=request_logger.max_entries, **filters)
+    entries = request_logger.get_entries(
+        limit=request_logger.max_entries,
+        subdomain=subdomain,
+        method=method,
+        since=since,
+    )
     return {
-        "stats": request_logger.get_stats_for(**filters),
+        "stats": request_logger.get_stats_for(
+            subdomain=subdomain,
+            method=method,
+            since=since,
+        ),
         "series": [
             {
                 "timestamp": entry["timestamp"],
@@ -385,7 +391,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.api_route(
-    "/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+    "/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
 )
 async def proxy_request(request: Request, path: str):
     """Proxy HTTP requests to tunnels"""
