@@ -4,6 +4,9 @@ __pycache__/
 *.pyd
 .env
 api_keys.json
+key.txt
+*.key
+*.pem
 venv/
 env/
 .venv/
@@ -11,3 +14,11 @@ env/
 .vscode/
 .DS_Store
 *.swp
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
