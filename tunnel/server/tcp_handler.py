@@ -113,10 +113,9 @@ class TCPHandler:
         if port and self.is_port_in_use(port):
             raise OSError(f"TCP port {port} already in use")
 
-        # Start server (port=0 lets OS auto-assign)
-        # nosec B104 - 0.0.0.0 intentional: public TCP forward port
+        # Start server (port=0 lets OS auto-assign; 0.0.0.0 is intentional: public TCP forward port)
         server = await asyncio.start_server(
-            handle_client, "0.0.0.0", port or 0  # nosec
+            handle_client, "0.0.0.0", port or 0  # nosec B104
         )
         self._servers[tunnel_id] = server
 
