@@ -21,10 +21,9 @@ def run_server():
     import os
 
     parser = argparse.ArgumentParser(description="Tunnel Server")
-    # nosec B104 --host 0.0.0.0 is intentional: public tunnel server
     parser.add_argument(
         "--host",
-        default=os.getenv("TUNNEL_HOST", "0.0.0.0"),  # nosec
+        default=os.getenv("TUNNEL_HOST", "0.0.0.0"),  # nosec B104
         help="Host to bind",
     )
     parser.add_argument(
