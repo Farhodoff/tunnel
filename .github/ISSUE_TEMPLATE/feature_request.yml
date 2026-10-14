@@ -1,0 +1,37 @@
+name: "🚀 Feature Request"
+description: "Suggest an idea, enhancement, or new capability for Tunelio"
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to make Tunelio better? Let us know what you have in mind!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a specific limitation or pain point?
+      placeholder: Currently, it is difficult or impossible to [...]
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / Feature
+      description: Describe how the new feature should work from a user or API perspective.
+      placeholder: Add a CLI flag or server endpoint that [...]
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you have considered.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have verified this feature is not already supported or requested
+          required: true

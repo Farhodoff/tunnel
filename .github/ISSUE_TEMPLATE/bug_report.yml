@@ -1,0 +1,65 @@
+name: "🐛 Bug Report"
+description: "Report a reproducible bug or unexpected behavior in Tunelio"
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much detail as possible to help us reproduce and fix it.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened and what you expected instead...
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - Server (FastAPI / Uvicorn)
+        - Client CLI (tunnel.cli client)
+        - WebSocket Tunnel Protocol
+        - TCP Stream Forwarding
+        - Web Dashboard (/dashboard)
+        - Docker / Docker Compose
+        - SSL / TLS Termination
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Exact commands or steps to trigger the bug.
+      placeholder: |
+        1. Start server with `python -m tunnel.cli server ...`
+        2. Start client with `python -m tunnel.cli client ...`
+        3. Send HTTP request to `http://myapp.tunnel.dev`
+        4. See error in terminal: [...]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal Logs & Output
+      description: Paste any server or client logs, stack traces, or terminal output.
+      render: shell
+  - type: input
+    id: environment
+    attributes:
+      label: Environment Info
+      description: Python version, OS (macOS/Ubuntu/Windows), Docker version.
+      placeholder: Python 3.11, Ubuntu 22.04 LTS, Docker 26.1
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have checked existing issues to ensure this is not a duplicate
+          required: true

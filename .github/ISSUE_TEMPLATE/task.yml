@@ -1,0 +1,26 @@
+name: "🛠️ Task / Maintenance"
+description: "Internal refactoring, performance improvements, tests, or documentation task"
+title: "[Task]: "
+labels: ["task"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: Describe what technical work needs to be accomplished and why.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Technical Scope & Files Affected
+      description: List modules, protocols, or tests that will be modified.
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Checklist of requirements to consider this task complete.
+      value: |
+        - [ ] Implementation complete
+        - [ ] Unit & integration tests passing (`pytest`)
+        - [ ] Documentation updated (`README.md` or `API.md`)
