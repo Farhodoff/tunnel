@@ -211,9 +211,89 @@ test renewal with `certbot renew --dry-run`.
 
 ---
 
-## Architecture & API
+## Architecture & System Design
 
-- **API Documentation**: Detailed information about the WebSocket protocol and REST API endpoints can be found in `API.md`.
+Tunelio uses an asynchronous, event-driven multiplexing architecture designed to route public HTTP and raw TCP traffic through firewalls and NATs back to developer machines over a single persistent control tunnel:
+
+```mermaid
+flowchart TD
+    %% Styling and Theme Classes
+    classDef client fill:#0F172A,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC
+    classDef ingress fill:#1E1E38,stroke:#F43F5E,stroke-width:2px,color:#F8FAFC
+    classDef server fill:#1E293B,stroke:#818CF8,stroke-width:2px,color:#F8FAFC
+    classDef router fill:#312E81,stroke:#A78BFA,stroke-width:2px,color:#F8FAFC
+    classDef storage fill:#064E3B,stroke:#34D399,stroke-width:2px,color:#F8FAFC
+    classDef monitor fill:#451A03,stroke:#FBBF24,stroke-width:2px,color:#F8FAFC
+
+    subgraph DevEnvironment["💻 Local Developer Machine"]
+        LocalApp["🌐 Local Web App / API<br/>(e.g., localhost:3000, 8000)"]:::client
+        LocalTCP["🔌 Local TCP Service<br/>(e.g., SSH :22, Database)"]:::client
+        TunnelCLI["⚡ Tunelio CLI Client<br/>(tunnel.cli client)"]:::client
+        ClientWS["🔄 WebSocket / TCP Bridge<br/>(TunnelClient & TCPClient)"]:::client
+    end
+
+    subgraph IngressTier["🌐 Public Internet & Traffic Ingress"]
+        PublicUsers["👥 Public Users & Browsers<br/>(https://myapp.tunnel.dev)"]:::ingress
+        Webhooks["🔔 Webhook Providers<br/>(GitHub, Stripe, Payme, Slack)"]:::ingress
+        NginxTLS["🛡️ Nginx / Certbot TLS Proxy<br/>(Wildcard *.tunnel.dev, SSL/TLS)"]:::ingress
+    end
+
+    subgraph TunelioServer["🚀 Tunelio Server Tier (FastAPI & Uvicorn)"]
+        Dispatcher["🔀 Host & Subdomain Dispatcher<br/>(Dynamic Request Matching)"]:::router
+        WSHub["📡 WebSocket Hub & Manager<br/>(connection.py - multiplexing)"]:::server
+        TCPHandler["🔌 Raw TCP Stream Handler<br/>(tcp_handler.py - dynamic ports)"]:::server
+        AuthModule["🔐 API Key & Token Guard<br/>(X-API-Key, Bearer token auth)"]:::server
+        RateLimiter["⏱️ Rate Limiter (Token Bucket)<br/>(Per-IP & Per-Tunnel limits)"]:::server
+        DashboardApp["📊 Analytics & Web Dashboard<br/>(/dashboard - live traffic & stats)"]:::monitor
+        WebhookInspector["🔍 Webhook Capture & Replay<br/>(/api/replay, request logger)"]:::monitor
+    end
+
+    subgraph StorageObservability["💾 Storage & Observability Tier"]
+        RedisCache[("⚡ Redis (Optional)<br/>Distributed limits & state")]:::storage
+        KeyStore[("📁 Persistent Storage<br/>api_keys.json & replay cache")]:::storage
+        Prometheus["📈 Prometheus Engine<br/>(/metrics & /health probes)"]:::monitor
+    end
+
+    %% Client Connection
+    LocalApp <--> ClientWS
+    LocalTCP <--> ClientWS
+    TunnelCLI --> ClientWS
+    ClientWS <-- "Persistent Control Tunnel (WSS / TCP)" --> WSHub
+    ClientWS <--> TCPHandler
+
+    %% Ingress Flow
+    PublicUsers --> NginxTLS
+    Webhooks --> NginxTLS
+    NginxTLS --> Dispatcher
+
+    %% Request Routing Flow
+    Dispatcher --> AuthModule
+    AuthModule --> RateLimiter
+    RateLimiter --> WSHub
+    WSHub -. "Multiplexed Forwarding" .-> ClientWS
+    ClientWS -. "Forward Request" .-> LocalApp
+
+    %% Management & Dashboard
+    Dispatcher --> DashboardApp
+    Dispatcher --> WebhookInspector
+    Dispatcher --> Prometheus
+
+    %% Storage Integration
+    RateLimiter <--> RedisCache
+    AuthModule <--> KeyStore
+    WebhookInspector <--> KeyStore
+```
+
+### 🔄 Request Lifecycle & Traffic Flow
+
+1. **Control Tunnel Establishment**: Client runs `python -m tunnel.cli client --subdomain myapp`. It opens a long-lived authenticated WebSocket to the Tunelio server (`/tunnel`). The server registers `myapp` in its active connection table.
+2. **Public Ingress & Routing**: An external webhook or visitor hits `https://myapp.tunnel.dev`. The server extracts the `Host` header, routes through the rate limiter and auth check, and matches the target tunnel.
+3. **Payload Multiplexing**: The incoming HTTP request (headers, query parameters, body) is serialized into framed WebSocket messages with an `X-Request-ID` and forwarded over the persistent tunnel.
+4. **Local Execution & Response**: The local client forwards the request to `http://127.0.0.1:3000`, captures the response, and streams it back through the tunnel. The server terminates the response to the public user and logs the transaction for the live dashboard and replay engine.
+
+### 📡 API & Observability
+
+- **API Documentation**: Detailed information about the WebSocket protocol and REST API endpoints can be found in [`API.md`](API.md).
 - **Metrics**: Prometheus-formatted metrics are exposed at `/metrics`.
 - **Health Check**: Available at `/health`.
 
