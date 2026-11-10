@@ -1,25 +1,31 @@
-## 🛠 Technologies
+<div align="center">
+
+# ⚡ Tunelio (Tunnel)
+### High-Performance Local-to-Public Tunneling Service & ngrok Alternative
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/FastAPI-005863?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Uvicorn-202324?style=for-the-badge&logo=uvicorn&logoColor=white" alt="Uvicorn" />
-  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
-  <img src="https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white" alt="Prometheus" />
-  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
-  <img src="https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white" alt="GitHub Actions" />
-  <img src="https://img.shields.io/badge/Pytest-0A9EDC?style=for-the-badge&logo=pytest&logoColor=white" alt="Pytest" />
+  <strong>Expose local web servers, APIs, and TCP ports to the public internet securely using WebSockets, FastAPI, and custom subdomains.</strong>
 </p>
 
-<p align="center">
-  <b>WebSockets</b> • <b>aiohttp</b> • <b>MkDocs</b> • <b>Cryptography (SSL/TLS)</b>
-</p>
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-005863?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![WebSockets](https://img.shields.io/badge/WebSockets-High--Throughput-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://websockets.readthedocs.io/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+
+<br />
+
+[✨ Features](#features) • [🚀 Installation](#installation) • [⚙️ Usage](#usage) • [🏛️ Architecture](#-system-architecture) • [📡 API & Observability](#-api--observability) • [🔧 Troubleshooting](#troubleshooting)
+
+</div>
 
 ---
 
-# Tunelio (Tunnel)
+## Overview
 
-Tunelio is a robust, Python-based tunneling application that exposes your local web servers to the internet. Built with FastAPI and WebSockets, it serves as a lightweight alternative to tools like ngrok or localtunnel, enabling seamless development, webhook testing, and secure remote access.
+**Tunelio** is a robust, Python-based tunneling application that exposes your local web servers to the internet. Built with FastAPI and WebSockets, it serves as a lightweight alternative to tools like ngrok or localtunnel, enabling seamless development, webhook testing, and secure remote access.
 
 ## Features
 
