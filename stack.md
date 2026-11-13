@@ -4,7 +4,7 @@ Tunelio — lokal veb serverlarni internetga xavfsiz va qulay tarzda chiqarishga
 
 # Stacklar
 
-- Python 3.8+
+- Python 3.10+
 - FastAPI
 - Uvicorn
 - WebSockets

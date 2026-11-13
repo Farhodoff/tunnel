@@ -7,7 +7,7 @@
   <strong>Expose local web servers, APIs, and TCP ports to the public internet securely using WebSockets, FastAPI, and custom subdomains.</strong>
 </p>
 
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005863?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![WebSockets](https://img.shields.io/badge/WebSockets-High--Throughput-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://websockets.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
@@ -47,7 +47,7 @@
 ## Installation
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.10+
 - (Optional) Docker and Docker Compose
 
 ### Local Development Setup
